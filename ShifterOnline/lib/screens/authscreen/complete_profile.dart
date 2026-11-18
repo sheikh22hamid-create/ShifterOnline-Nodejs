@@ -1,3 +1,4 @@
+import '../../theme/app_tokens.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
@@ -164,7 +165,7 @@ class _CompleteProfileState extends State<CompleteProfile> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppPalette.current.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => SizedBox(
@@ -196,10 +197,10 @@ class _CompleteProfileState extends State<CompleteProfile> {
   Widget _label(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 8, left: 2),
         child: Text(text,
-            style: const TextStyle(
+            style: TextStyle(
                 fontFamily: 'Gilroy_Bold',
                 fontSize: 13.5,
-                color: Color(0xFF1F2937))),
+                color: AppPalette.current.ink)),
       );
 
   Widget _input({
@@ -218,12 +219,12 @@ class _CompleteProfileState extends State<CompleteProfile> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
               color:
-                  error != null ? Colors.red.shade400 : const Color(0xFFE5E7EB),
+                  error != null ? Colors.red.shade400 : AppPalette.current.line,
               width: 1.2),
         ),
         child: Row(children: [
           const SizedBox(width: 14),
-          Icon(icon, size: 20, color: const Color(0xFF9CA3AF)),
+          Icon(icon, size: 20, color: AppPalette.current.inkSubtle),
           const SizedBox(width: 12),
           Expanded(
             child: TextField(
@@ -231,10 +232,10 @@ class _CompleteProfileState extends State<CompleteProfile> {
               controller: controller,
               keyboardType: keyboardType,
               textCapitalization: caps,
-              style: const TextStyle(
+              style: TextStyle(
                   fontFamily: 'Gilroy_Medium',
                   fontSize: 15,
-                  color: Color(0xFF111827)),
+                  color: AppPalette.current.ink),
               decoration: borderlessInputDecoration(hint: hint),
             ),
           ),
@@ -267,15 +268,15 @@ class _CompleteProfileState extends State<CompleteProfile> {
         if (!didPop) _exit();
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.current.surface,
         body: SafeArea(
           child: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 16, 0),
               child: Row(children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded,
-                      color: Color(0xFF111827)),
+                  icon: Icon(Icons.arrow_back_rounded,
+                      color: AppPalette.current.ink),
                   onPressed: _exit,
                 ),
               ]),
@@ -287,37 +288,37 @@ class _CompleteProfileState extends State<CompleteProfile> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Complete your profile',
+                      Text('Complete your profile',
                           style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
                               fontSize: 26,
-                              color: Color(0xFF111827),
+                              color: AppPalette.current.ink,
                               height: 1.2)),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFECFDF5),
+                          color: AppPalette.current.successTint,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.verified_rounded,
-                              size: 16, color: Color(0xFF059669)),
+                          Icon(Icons.verified_rounded,
+                              size: 16, color: AppPalette.current.success),
                           const SizedBox(width: 6),
                           Text('+91 ${widget.mobile} verified',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 13,
-                                  color: Color(0xFF065F46))),
+                                  color: AppPalette.current.successText)),
                         ]),
                       ),
                       const SizedBox(height: 8),
-                      const Text('A few details and you are ready to book.',
+                      Text('A few details and you are ready to book.',
                           style: TextStyle(
                               fontFamily: 'Gilroy_Medium',
                               fontSize: 13.5,
-                              color: Color(0xFF6B7280))),
+                              color: AppPalette.current.inkMuted)),
                       const SizedBox(height: 24),
                       _label('Full Name'),
                       _input(
@@ -366,19 +367,19 @@ class _CompleteProfileState extends State<CompleteProfile> {
                           ),
                           child: Center(
                             child: _submitting
-                                ? const SpinKitThreeBounce(
-                                    color: Color(0xFF1A0B04), size: 20)
-                                : const Row(
+                                ? SpinKitThreeBounce(
+                                    color: AppPalette.current.onBrand, size: 20)
+                                : Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                         Text('Create Account',
                                             style: TextStyle(
                                                 fontFamily: 'Gilroy_Bold',
                                                 fontSize: 16,
-                                                color: Color(0xFF1A0B04))),
+                                                color: AppPalette.current.onBrand)),
                                         SizedBox(width: 8),
                                         Icon(Icons.arrow_forward_rounded,
-                                            size: 18, color: Color(0xFF1A0B04)),
+                                            size: 18, color: AppPalette.current.onBrand),
                                       ]),
                           ),
                         ),
@@ -389,10 +390,10 @@ class _CompleteProfileState extends State<CompleteProfile> {
                           textAlign: TextAlign.center,
                           text: TextSpan(
                             text: 'By creating an account you agree to our\n',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontFamily: 'Gilroy_Medium',
                                 fontSize: 11.5,
-                                color: Color(0xFF6B7280),
+                                color: AppPalette.current.inkMuted,
                                 height: 1.4),
                             children: [
                               TextSpan(

@@ -8,6 +8,9 @@ const _swept = <String>[
   'lib/screens/home/waiting_screen.dart',
   'lib/screens/myorder/widgets/trip_complete_widgets.dart',
   'lib/screens/myorder/trackingway.dart',
+  'lib/screens/authscreen/signin.dart',
+  'lib/screens/authscreen/verification.dart',
+  'lib/screens/authscreen/complete_profile.dart',
 ];
 
 void main() {
@@ -36,6 +39,23 @@ void main() {
     for (final path in _swept) {
       final src = File(path).readAsStringSync();
       expect(src.contains('AppPalette.light'), isFalse, reason: path);
+    }
+  });
+
+  test('light-only surfaces: white backgrounds and pure-black text are flagged; icons and overlays are not', () {
+    const src = 'backgroundColor: Colors.white,\n'
+        'decoration: BoxDecoration(\n  color: Colors.white,\n'
+        'style: TextStyle(color: Colors.black)\n'
+        'Icon(Icons.check, color: Colors.white)\n'
+        'backgroundColor: Colors.black87, colorText: Colors.white\n'
+        'BoxShadow(color: Colors.black.withValues(alpha: 0.1))';
+    expect(lightOnlySurfaceViolations(src).length, 3);
+  });
+
+  test('swept files have no light-only surfaces (text follows dark mode, so backgrounds must too)', () {
+    for (final path in _swept) {
+      final v = lightOnlySurfaceViolations(File(path).readAsStringSync());
+      expect(v, isEmpty, reason: '$path:\n${v.join('\n')}');
     }
   });
 }

@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, unused_local_variable
 
+import '../../theme/app_tokens.dart';
 import 'package:goParcel/theme/widgets/brand_illustration.dart';
 import 'dart:async';
 import 'dart:developer';
@@ -219,10 +220,10 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
               children: [
                 AppBar(
                   title: Text(title,
-                      style: const TextStyle(fontSize: 16, fontFamily: 'Gilroy_Bold', color: Colors.black)),
-                  backgroundColor: Colors.white,
+                      style: TextStyle(fontSize: 16, fontFamily: 'Gilroy_Bold', color: AppPalette.current.ink)),
+                  backgroundColor: AppPalette.current.surface,
                   elevation: 0,
-                  iconTheme: const IconThemeData(color: Colors.black),
+                  iconTheme: IconThemeData(color: AppPalette.current.ink),
                   leading: IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),
@@ -429,7 +430,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
         if (!didPop) _handlePop();
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.current.surface,
         resizeToAvoidBottomInset: false, // Stack-based sliding sheet controls inset
         body: PageView(
           controller: _pageController,
@@ -504,7 +505,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
               },
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppPalette.current.surface,
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(isExpanded ? 24 : 32),
                     topRight: Radius.circular(isExpanded ? 24 : 32),
@@ -544,21 +545,21 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                               ? Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF3F4F6),
+                                    color: AppPalette.current.canvas,
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
-                                    children: const [
+                                    children: [
                                       Icon(Icons.keyboard_arrow_down_rounded,
-                                          size: 18, color: Color(0xFF6B7280)),
+                                          size: 18, color: AppPalette.current.inkMuted),
                                       SizedBox(width: 4),
                                       Text(
                                         'Swipe down to view header',
                                         style: TextStyle(
                                           fontFamily: 'Gilroy_Medium',
                                           fontSize: 11.5,
-                                          color: Color(0xFF6B7280),
+                                          color: AppPalette.current.inkMuted,
                                         ),
                                       ),
                                     ],
@@ -568,7 +569,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   width: 42,
                                   height: 4.5,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFD1D5DB),
+                                    color: AppPalette.current.line,
                                     borderRadius: BorderRadius.circular(3),
                                   ),
                                 ),
@@ -591,33 +592,33 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                               const SizedBox(height: 10),
 
                               // Heading
-                              const Text(
+                              Text(
                                 'Welcome Back',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 26,
-                                  color: Color(0xFF111827),
+                                  color: AppPalette.current.ink,
                                   height: 1.2,
                                 ),
                               ),
                               const SizedBox(height: 5),
-                              const Text(
+                              Text(
                                 'Sign in to continue your delivery journey',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Medium',
                                   fontSize: 13.5,
-                                  color: Color(0xFF6B7280),
+                                  color: AppPalette.current.inkMuted,
                                 ),
                               ),
                               const SizedBox(height: 22),
 
                               // Mobile Number label
-                              const Text(
+                              Text(
                                 'Mobile Number',
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 13.5,
-                                  color: Color(0xFF1F2937),
+                                  color: AppPalette.current.ink,
                                 ),
                               ),
                               const SizedBox(height: 8),
@@ -625,12 +626,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                               // Phone input box
                               Container(
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFAFAFA),
+                                  color: AppPalette.current.canvas,
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
                                     color: _numberError != null
                                         ? Colors.red.shade400
-                                        : const Color(0xFFE5E7EB),
+                                        : AppPalette.current.line,
                                     width: 1.2,
                                   ),
                                 ),
@@ -639,7 +640,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                     Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                                       child: Row(
-                                        children: const [
+                                        children: [
                                           Text('🇮🇳', style: TextStyle(fontSize: 19)),
                                           SizedBox(width: 8),
                                           Text(
@@ -647,16 +648,16 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                             style: TextStyle(
                                               fontFamily: 'Gilroy_Bold',
                                               fontSize: 15,
-                                              color: Color(0xFF111827),
+                                              color: AppPalette.current.ink,
                                             ),
                                           ),
                                           SizedBox(width: 4),
                                           Icon(Icons.keyboard_arrow_down_rounded,
-                                              size: 18, color: Color(0xFF6B7280)),
+                                              size: 18, color: AppPalette.current.inkMuted),
                                         ],
                                       ),
                                     ),
-                                    Container(width: 1, height: 26, color: const Color(0xFFE5E7EB)),
+                                    Container(width: 1, height: 26, color: AppPalette.current.line),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: TextFormField(
@@ -677,13 +678,13 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                         },
                                         // Same weight/size as the +91 prefix so
                                         // the number reads as one line.
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontFamily: 'Gilroy_Bold',
                                           fontSize: 15,
                                           letterSpacing: 0.8,
-                                          color: Color(0xFF111827),
+                                          color: AppPalette.current.ink,
                                         ),
-                                        cursorColor: const Color(0xFFFA4500),
+                                        cursorColor: AppPalette.current.brand,
                                         decoration: borderlessInputDecoration(
                                           hint: 'Enter mobile number',
                                           contentPadding:
@@ -717,12 +718,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   width: double.infinity,
                                   height: 52,
                                   decoration: BoxDecoration(
-                                    color: isPhoneValid ? const Color(0xFFFF6B35) : const Color(0xFFCFD6DC),
+                                    color: isPhoneValid ? AppPalette.current.brand : AppPalette.current.line,
                                     borderRadius: BorderRadius.circular(14),
                                     boxShadow: isPhoneValid
                                         ? [
                                             BoxShadow(
-                                              color: const Color(0xFFFA4500).withOpacity(0.32),
+                                              color: AppPalette.current.brand.withOpacity(0.32),
                                               blurRadius: 14,
                                               offset: const Offset(0, 5),
                                             ),
@@ -731,21 +732,21 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   ),
                                   child: Center(
                                     child: _isSendingOtp
-                                        ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
+                                        ? SpinKitThreeBounce(color: AppPalette.current.onBrand, size: 20)
                                         : Row(
                                             mainAxisSize: MainAxisSize.min,
-                                            children: const [
+                                            children: [
                                               Text(
                                                 'Continue',
                                                 style: TextStyle(
                                                   fontFamily: 'Gilroy_Bold',
                                                   fontSize: 16,
-                                                  color: Color(0xFF1A0B04),
+                                                  color: AppPalette.current.onBrand,
                                                 ),
                                               ),
                                               SizedBox(width: 8),
                                               Icon(Icons.arrow_forward_rounded,
-                                                  size: 18, color: Color(0xFF1A0B04)),
+                                                  size: 18, color: AppPalette.current.onBrand),
                                             ],
                                           ),
                                   ),
@@ -760,20 +761,20 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                   textAlign: TextAlign.center,
                                   text: TextSpan(
                                     text: 'By continuing, you agree to our\n',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontFamily: 'Gilroy_Medium',
                                       fontSize: 11.5,
-                                      color: Color(0xFF6B7280),
+                                      color: AppPalette.current.inkMuted,
                                       height: 1.4,
                                     ),
                                     children: [
                                       TextSpan(
                                         text: 'Terms and Conditions',
-                                        style: const TextStyle(
-                                          color: Color(0xFFFA4500),
+                                        style: TextStyle(
+                                          color: AppPalette.current.brand,
                                           fontFamily: 'Gilroy_Bold',
                                           decoration: TextDecoration.underline,
-                                          decorationColor: Color(0xFFFA4500),
+                                          decorationColor: AppPalette.current.brand,
                                         ),
                                         recognizer: TapGestureRecognizer()
                                           ..onTap = () => _showWebViewDialog(
@@ -783,11 +784,11 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                       const TextSpan(text: ' and '),
                                       TextSpan(
                                         text: 'Privacy Policy',
-                                        style: const TextStyle(
-                                          color: Color(0xFFFA4500),
+                                        style: TextStyle(
+                                          color: AppPalette.current.brand,
                                           fontFamily: 'Gilroy_Bold',
                                           decoration: TextDecoration.underline,
-                                          decorationColor: Color(0xFFFA4500),
+                                          decorationColor: AppPalette.current.brand,
                                         ),
                                         recognizer: TapGestureRecognizer()
                                           ..onTap = () => _showWebViewDialog(
@@ -806,23 +807,23 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFF0FDF4),
+                                  color: AppPalette.current.successTint,
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: const Color(0xFFDCFCE7)),
+                                  border: Border.all(color: AppPalette.current.successTint),
                                 ),
                                 child: Row(
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.all(8),
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xFFDCFCE7),
+                                      decoration: BoxDecoration(
+                                        color: AppPalette.current.successTint,
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(Icons.eco_rounded,
-                                          color: Color(0xFF16A34A), size: 20),
+                                      child: Icon(Icons.eco_rounded,
+                                          color: AppPalette.current.success, size: 20),
                                     ),
                                     const SizedBox(width: 12),
-                                    const Expanded(
+                                    Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
@@ -831,7 +832,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                             style: TextStyle(
                                               fontFamily: 'Gilroy_Bold',
                                               fontSize: 12.5,
-                                              color: Color(0xFF166534),
+                                              color: AppPalette.current.successText,
                                             ),
                                           ),
                                           SizedBox(height: 2),
@@ -840,7 +841,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                             style: TextStyle(
                                               fontFamily: 'Gilroy_Medium',
                                               fontSize: 11,
-                                              color: Color(0xFF4B5563),
+                                              color: AppPalette.current.inkMuted,
                                             ),
                                           ),
                                         ],
@@ -894,13 +895,13 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
-                      children: const [
+                      children: [
                         Text(
                           'ShifterOnline',
                           style: TextStyle(
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 16,
-                            color: Color(0xFF111827),
+                            color: AppPalette.current.ink,
                             fontWeight: FontWeight.w800,
                             height: 1.1,
                           ),
@@ -910,7 +911,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                           style: TextStyle(
                             fontFamily: 'Gilroy_Medium',
                             fontSize: 9.5,
-                            color: Color(0xFF6B7280),
+                            color: AppPalette.current.inkMuted,
                             height: 1.1,
                           ),
                         ),
@@ -942,21 +943,21 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                   const SizedBox(height: 24),
 
                   // Heading
-                  const Text(
+                  Text(
                     'Verify your number',
                     style: TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 24,
-                      color: Color(0xFF111827),
+                      color: AppPalette.current.ink,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'We have sent a 6-digit OTP to',
                     style: TextStyle(
                       fontFamily: 'Gilroy_Medium',
                       fontSize: 13.5,
-                      color: Color(0xFF6B7280),
+                      color: AppPalette.current.inkMuted,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -965,17 +966,17 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     children: [
                       Text(
                         '+91 ${number.text.trim()}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Gilroy_Bold',
                           fontSize: 15,
-                          color: Color(0xFF111827),
+                          color: AppPalette.current.ink,
                         ),
                       ),
                       const SizedBox(width: 6),
                       GestureDetector(
                         onTap: _handlePop,
-                        child: const Icon(Icons.edit_outlined,
-                            size: 16, color: Color(0xFFFA4500)),
+                        child: Icon(Icons.edit_outlined,
+                            size: 16, color: AppPalette.current.brand),
                       ),
                     ],
                   ),
@@ -1000,15 +1001,15 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     defaultPinTheme: PinTheme(
                       width: 50,
                       height: 54,
-                      textStyle: const TextStyle(
+                      textStyle: TextStyle(
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 20,
-                        color: Color(0xFF111827),
+                        color: AppPalette.current.ink,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppPalette.current.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE5E7EB), width: 1.5),
+                        border: Border.all(color: AppPalette.current.line, width: 1.5),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.04),
@@ -1021,18 +1022,18 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                     focusedPinTheme: PinTheme(
                       width: 50,
                       height: 54,
-                      textStyle: const TextStyle(
+                      textStyle: TextStyle(
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 20,
-                        color: Color(0xFFFA4500),
+                        color: AppPalette.current.brand,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppPalette.current.surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFFA4500), width: 2),
+                        border: Border.all(color: AppPalette.current.brand, width: 2),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFFA4500).withOpacity(0.12),
+                            color: AppPalette.current.brand.withOpacity(0.12),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -1048,34 +1049,34 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFECFDF5),
+                        color: AppPalette.current.successTint,
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFA7F3D0)),
+                        border: Border.all(color: AppPalette.current.successTint),
                       ),
                       child: Row(
                         children: [
                           Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF059669),
+                            decoration: BoxDecoration(
+                              color: AppPalette.current.success,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.check, size: 13, color: Colors.white),
                           ),
                           const SizedBox(width: 10),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'OTP detected and filled automatically',
                               style: TextStyle(
                                 fontFamily: 'Gilroy_Medium',
                                 fontSize: 12.5,
-                                color: Color(0xFF065F46),
+                                color: AppPalette.current.successText,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
-                          const Icon(Icons.auto_awesome_rounded,
-                              size: 16, color: Color(0xFF059669)),
+                          Icon(Icons.auto_awesome_rounded,
+                              size: 16, color: AppPalette.current.success),
                         ],
                       ),
                     ),
@@ -1087,12 +1088,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         "Didn't receive OTP?",
                         style: TextStyle(
                           fontFamily: 'Gilroy_Medium',
                           fontSize: 13,
-                          color: Color(0xFF6B7280),
+                          color: AppPalette.current.inkMuted,
                         ),
                       ),
                       GestureDetector(
@@ -1103,8 +1104,8 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 13,
                             color: _canResend
-                                ? const Color(0xFFFA4500)
-                                : const Color(0xFF9CA3AF),
+                                ? AppPalette.current.brand
+                                : AppPalette.current.inkSubtle,
                           ),
                         ),
                       ),
@@ -1121,12 +1122,12 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       width: double.infinity,
                       height: 52,
                       decoration: BoxDecoration(
-                        color: isOtpComplete ? const Color(0xFFFF6B35) : const Color(0xFFCFD6DC),
+                        color: isOtpComplete ? AppPalette.current.brand : AppPalette.current.line,
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: isOtpComplete
                             ? [
                                 BoxShadow(
-                                  color: const Color(0xFFFA4500).withOpacity(0.35),
+                                  color: AppPalette.current.brand.withOpacity(0.35),
                                   blurRadius: 14,
                                   offset: const Offset(0, 5),
                                 ),
@@ -1135,21 +1136,21 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                       ),
                       child: Center(
                         child: _isVerifying
-                            ? const SpinKitThreeBounce(color: Color(0xFF1A0B04), size: 20)
+                            ? SpinKitThreeBounce(color: AppPalette.current.onBrand, size: 20)
                             : Row(
                                 mainAxisSize: MainAxisSize.min,
-                                children: const [
+                                children: [
                                   Text(
                                     'Verify & Continue',
                                     style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 16,
-                                      color: Color(0xFF1A0B04),
+                                      color: AppPalette.current.onBrand,
                                     ),
                                   ),
                                   SizedBox(width: 8),
                                   Icon(Icons.arrow_forward_rounded,
-                                      size: 18, color: Color(0xFF1A0B04)),
+                                      size: 18, color: AppPalette.current.onBrand),
                                 ],
                               ),
                       ),
@@ -1162,23 +1163,23 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF9FAFB),
+                      color: AppPalette.current.canvas,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFF3F4F6)),
+                      border: Border.all(color: AppPalette.current.canvas),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFDCFCE7),
+                            color: AppPalette.current.successTint,
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.shield_outlined,
-                              color: Color(0xFF16A34A), size: 22),
+                          child: Icon(Icons.shield_outlined,
+                              color: AppPalette.current.success, size: 22),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1187,7 +1188,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 13,
-                                  color: Color(0xFF111827),
+                                  color: AppPalette.current.ink,
                                 ),
                               ),
                               SizedBox(height: 2),
@@ -1196,7 +1197,7 @@ class _SignInState extends State<SignIn> with CodeAutoFill {
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Medium',
                                   fontSize: 11.5,
-                                  color: Color(0xFF6B7280),
+                                  color: AppPalette.current.inkMuted,
                                   height: 1.35,
                                 ),
                               ),

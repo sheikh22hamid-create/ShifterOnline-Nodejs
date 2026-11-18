@@ -76,3 +76,24 @@ List<String> legacyColorViolations(String source) {
   }
   return out;
 }
+
+final RegExp _whiteBg = RegExp(r'backgroundColor:\s*Colors\.white\b(?![0-9.])');
+final RegExp _whiteBoxColor = RegExp(r'^\s*color:\s*Colors\.white,\s*$');
+final RegExp _pureBlack = RegExp(r'Colors\.black\b(?![0-9.])');
+
+/// Once text reads `AppPalette.current.ink` (light in dark mode), a hard-coded white background or pure-black
+/// text becomes unreadable in dark mode. Flags `backgroundColor: Colors.white`, a `BoxDecoration(` whose
+/// colour is `Colors.white`, and plain `Colors.black` (not black87/black12/withOpacity shadows).
+List<String> lightOnlySurfaceViolations(String source) {
+  final out = <String>[];
+  final lines = source.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    if (_whiteBg.hasMatch(line) ||
+        (_whiteBoxColor.hasMatch(line) && i > 0 && lines[i - 1].contains('BoxDecoration(')) ||
+        (_pureBlack.hasMatch(line) && !line.toLowerCase().contains('shadow'))) {
+      out.add('line ${i + 1}: ${line.trim()}');
+    }
+  }
+  return out;
+}

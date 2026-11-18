@@ -1917,8 +1917,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.all(22),
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: AppPalette.current.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: Column(
@@ -3114,7 +3114,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppPalette.current.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4))],
       ),

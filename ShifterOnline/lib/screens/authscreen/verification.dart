@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import '../../theme/app_tokens.dart';
 import 'dart:async';
 import 'dart:developer';
 
@@ -206,7 +207,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
     return WillPopScope(
       onWillPop: () async => false,
       child: Scaffold(
-      backgroundColor: linercolor,
+      backgroundColor: AppPalette.current.brand,
         body: Padding(
           padding: EdgeInsets.only(top: Get.height / 13),
           child: Column(
@@ -255,7 +256,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                   width: Get.width,
                   padding: EdgeInsets.all(15),
                   decoration: BoxDecoration(
-                    color: notifier.lightBgColor,
+                    color: AppPalette.current.canvas,
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(24),
                       topRight: Radius.circular(24),
@@ -269,7 +270,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                         Text(
                           "We have sent the code verification to".tr,
                           style: TextStyle(
-                            color: notifier.text,
+                            color: AppPalette.current.ink,
                             fontFamily: 'Gilroy_Medium',
                             fontSize: 15,
                           ),
@@ -279,7 +280,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                             Text(
                               "your number".tr,
                               style: TextStyle(
-                                color: notifier.text.withOpacity(0.8),
+                                color: AppPalette.current.ink.withOpacity(0.8),
                                 fontFamily: 'Gilroy_Medium',
                                 fontSize: 15,
                               ),
@@ -289,7 +290,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                               //"${widget.ccode} ${widget.mobile}",
                               "${widget.mobile}",
                               style: TextStyle(
-                                color: notifier.text,
+                                color: AppPalette.current.ink,
                                 fontFamily: 'Gilroy_Bold',
                                 fontSize: 17,
                               ),
@@ -328,7 +329,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                                     child: Text(
                                       "Resend".tr,
                                       style: TextStyle(
-                                        color: notifier.darklinercolor,
+                                        color: AppPalette.current.brandText,
                                         fontFamily: 'Gilroy_Medium',
                                         fontSize: 17,
                                       ),
@@ -343,7 +344,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                            width: Get.width,
                            height: Get.height / 16,
                            decoration: BoxDecoration(
-                             color: linercolor,
+                             color: AppPalette.current.brand,
                              borderRadius: BorderRadius.circular(15),
                            ),
                            child: Center(
@@ -428,11 +429,11 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
       height: 50,
       textStyle: TextStyle(
         fontSize: 20,
-        color: notifier.text,
+        color: AppPalette.current.ink,
         fontWeight: FontWeight.w600,
       ),
       decoration: BoxDecoration(
-        border: Border.all(color: notifier.bordecolor),
+        border: Border.all(color: AppPalette.current.line),
         borderRadius: BorderRadius.circular(10),
       ),
     );
@@ -445,7 +446,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
           controller: controller,
           defaultPinTheme: defaultPinTheme,
           focusedPinTheme: defaultPinTheme.copyDecorationWith(
-            border: Border.all(color: linercolor),
+            border: Border.all(color: AppPalette.current.brand),
           ),
         ),
       ),
