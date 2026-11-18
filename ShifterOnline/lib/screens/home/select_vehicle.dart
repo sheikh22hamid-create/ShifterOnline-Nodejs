@@ -33,6 +33,8 @@ import 'waiting_screen.dart';
 import '../myorder/trackingway.dart';
 import 'widgets/vehicle_option_card.dart';
 import 'widgets/booking_type_card.dart';
+import 'widgets/offers_details_card.dart';
+import '../../theme/widgets/app_sheet.dart';
 import '../../theme/widgets/route_marker.dart';
 import 'widgets/booking_option_widgets.dart';
 import '../../theme/app_tokens.dart';
@@ -1570,6 +1572,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                       ],
                     ),
                   const SizedBox(height: 14),
+                  if (_selected != null && _isAvailable(_selected!['availability'])) ...[
+                    const SizedBox(height: 14),
+                    _offersDetailsCard(),
+                  ],
                   if (!(_selected != null && _isAvailable(_selected!['availability'])) &&
                       _vehicles.isNotEmpty &&
                       !_vehicles.any((v) => _isAvailable(v['availability'])))
@@ -1962,62 +1968,101 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Payable amount', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 14)), Text('₹${_payableAmount(_modelFare(_selectedModel!)!).toStringAsFixed(2)}', style: TextStyle(color: p.brandText, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
         ], Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: p.brandText, fontFamily: 'Gilroy_Bold', fontSize: 13))))],
-      if (_referralDiscountEnabled && _referralPointsAvailable > 0 && _referralRedeemablePoints > 0) ...[
-        const SizedBox(height: 10),
-        BookingOptionRow(
-          icon: Icons.stars_rounded,
-          leadingStateIcon: _useReferralPoints ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-          title: 'Use referral points',
-          subtitle: 'Save ₹${_referralRedeemableAmount.toStringAsFixed(0)} ($_referralRedeemablePoints pts)',
-          active: _useReferralPoints,
-          onTap: () => setState(() => _useReferralPoints = !_useReferralPoints),
-        ),
-      ],
-      const SizedBox(height: 10),
-      BookingOptionRow(
-        icon: Icons.local_offer_outlined,
-        title: _appliedCoupon == null
-            ? 'Apply coupon'
-            : 'Coupon ${_text(_appliedCoupon!['coupon_code'])} applied (${_text(_appliedCoupon!['c_value'])} off)',
-        active: _appliedCoupon != null,
-        onTap: () async {
-          final picked = await showCouponSheet(context);
-          if (picked != null && mounted) setState(() => _appliedCoupon = picked);
-        },
-        onClear: () => setState(() => _appliedCoupon = null),
-      ),
-      const SizedBox(height: 10),
-      GstDetailsSection(uid: _storage.read('Uid'), onChanged: (details) => setState(() => _gstDetails = details)),
-      const SizedBox(height: 18),
-      Text('Goods type (optional)', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 15)),
-      const SizedBox(height: 10),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ..._goodsTypes.map((t) {
-          final id = int.tryParse(t['id'].toString());
-          final selected = !_goodsOtherSelected && _goodsTypeId == id;
-          return BookingChoicePill(
-            label: _text(t['name']),
-            selected: selected,
-            // Tapping the selected chip again clears it — the field is optional.
-            onTap: () => setState(() { _goodsOtherSelected = false; _goodsTypeId = selected ? null : id; }),
-          );
-        }),
-        BookingChoicePill(
-          label: 'Other',
-          selected: _goodsOtherSelected,
-          onTap: () => setState(() { _goodsOtherSelected = !_goodsOtherSelected; if (_goodsOtherSelected) _goodsTypeId = null; }),
-        ),
-      ]),
-      if (_goodsOtherSelected) Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: TextField(
-          controller: _goodsOtherController,
-          maxLength: 100,
-          style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Medium'),
-          decoration: appInputDecoration(hint: 'Describe your goods'),
-        ),
-      ),
     ]));
+  }
+
+  /// Goods type, coupon, reward points and GST — moved out of the vehicle section into one Porter-style card.
+  Widget _offersDetailsCard() {
+    String goodsValue = 'Select'.tr;
+    if (_goodsOtherSelected) {
+      final other = _goodsOtherController.text.trim();
+      goodsValue = other.isEmpty ? 'Other' : 'Other · $other';
+    } else if (_goodsTypeId != null) {
+      for (final t in _goodsTypes) {
+        if (int.tryParse(t['id'].toString()) == _goodsTypeId) goodsValue = _text(t['name']);
+      }
+    }
+    final showPoints = _referralDiscountEnabled && _referralPointsAvailable > 0 && _referralRedeemablePoints > 0;
+    return OffersDetailsCard(
+      goodsValue: goodsValue,
+      onGoodsTap: _openGoodsSheet,
+      couponLabel: _appliedCoupon == null
+          ? 'Apply coupon'
+          : 'Coupon ${_text(_appliedCoupon!['coupon_code'])} applied (${_text(_appliedCoupon!['c_value'])} off)',
+      couponActive: _appliedCoupon != null,
+      onCouponTap: () async {
+        final picked = await showCouponSheet(context);
+        if (picked != null && mounted) setState(() => _appliedCoupon = picked);
+      },
+      onCouponClear: () => setState(() => _appliedCoupon = null),
+      pointsLabel: showPoints
+          ? 'Use referral points · Save ₹${_referralRedeemableAmount.toStringAsFixed(0)} ($_referralRedeemablePoints pts)'
+          : null,
+      pointsActive: _useReferralPoints,
+      onPointsTap: () => setState(() => _useReferralPoints = !_useReferralPoints),
+      gstSection: GstDetailsSection(uid: _storage.read('Uid'), onChanged: (details) => setState(() => _gstDetails = details)),
+    );
+  }
+
+  /// Goods type picker as a sheet: the same chips and "Other" field that used to sit in the vehicle section.
+  Future<void> _openGoodsSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheet) {
+          final p = AppPalette.current;
+          void both(VoidCallback change) {
+            setState(change);
+            setSheet(() {});
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+            child: AppSheet(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Goods type (optional)', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 17)),
+                  const SizedBox(height: 12),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    ..._goodsTypes.map((t) {
+                      final id = int.tryParse(t['id'].toString());
+                      final selected = !_goodsOtherSelected && _goodsTypeId == id;
+                      return BookingChoicePill(
+                        label: _text(t['name']),
+                        selected: selected,
+                        // Tapping the selected chip again clears it — the field is optional.
+                        onTap: () => both(() { _goodsOtherSelected = false; _goodsTypeId = selected ? null : id; }),
+                      );
+                    }),
+                    BookingChoicePill(
+                      label: 'Other',
+                      selected: _goodsOtherSelected,
+                      onTap: () => both(() { _goodsOtherSelected = !_goodsOtherSelected; if (_goodsOtherSelected) _goodsTypeId = null; }),
+                    ),
+                  ]),
+                  if (_goodsOtherSelected) Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: TextField(
+                      controller: _goodsOtherController,
+                      maxLength: 100,
+                      onChanged: (_) => setState(() {}),
+                      style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Medium'),
+                      decoration: appInputDecoration(hint: 'Describe your goods'),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  AppPrimaryButton(label: 'Done'.tr, onPressed: () => Navigator.of(sheetContext).pop()),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   List<String> _getAllowedBodyTypes(Map<String, dynamic>? option) {
