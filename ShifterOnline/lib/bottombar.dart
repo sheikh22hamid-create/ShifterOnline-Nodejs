@@ -274,7 +274,6 @@ class BottombarState extends State<Bottombar> {
       ],
       selectedIndex: _selectedIndex,
       onTabSelected: _selectTab,
-      onBookTap: () => _selectTab(0),
     );
   }
 
