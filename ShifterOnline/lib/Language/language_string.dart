@@ -12,6 +12,15 @@ class LocalString extends Translations {
           "Close": "Close",
           "What went well or needs improvement?": "What went well or needs improvement?",
           "How was your trip?": "How was your trip?",
+          // Porter-style v2 (2026-11-18) — Home
+          "Pick up from": "Pick up from",
+          "Move anything,\nanywhere": "Move anything,\nanywhere",
+          "Trucks, tempos and bikes": "Trucks, tempos and bikes",
+          "Book Now": "Book Now",
+          "Instant pickup": "Instant pickup",
+          "Pick date and time": "Pick date and time",
+          "Next day, lower price": "Next day, lower price",
+          "Offer your own fare": "Offer your own fare",
           // Customer UI redesign (2026-11-16) — Home
           "Picking up from": "Picking up from",
           "What are we moving today?": "What are we moving today?",

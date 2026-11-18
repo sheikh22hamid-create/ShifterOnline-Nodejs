@@ -137,6 +137,7 @@ flutter:
 
   assets:
     - assets/
+    - assets/v2/
     - assets/destination_map_marker.png
     - assets/driving_pin.png
     - assets/map_pin.png

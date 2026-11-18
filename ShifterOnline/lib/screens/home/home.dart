@@ -45,6 +45,7 @@ import 'package:sqflite/sqflite.dart' as sql;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'widgets/home_header.dart';
+import 'widgets/home_pickup_card.dart';
 import 'widgets/home_route_card.dart';
 import 'widgets/home_vehicle_row.dart';
 import 'widgets/home_more_grid.dart';
@@ -2683,9 +2684,6 @@ class _HomeState extends State<Home> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   HomeHeader(
-                    address: HomeHeader.pickupLine(
-                        confirmedPickup: _confirmedPickupAddress, gpsAddress: homeAddress),
-                    onLocationTap: _changePickupLocation,
                     onNotificationTap: () => Get.to(Notifications()),
                     walletBalance: _walletBalance,
                     onWalletTap: _openWalletFromHome,
@@ -2698,6 +2696,12 @@ class _HomeState extends State<Home> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                      HomePickupCard(
+                        address: HomeHeader.pickupLine(
+                            confirmedPickup: _confirmedPickupAddress, gpsAddress: homeAddress),
+                        onTap: _changePickupLocation,
+                      ),
+                      const SizedBox(height: 12),
                       _buildHomeRouteCard(),
                       const SizedBox(height: 16),
                       _buildActiveOrderStrip(),

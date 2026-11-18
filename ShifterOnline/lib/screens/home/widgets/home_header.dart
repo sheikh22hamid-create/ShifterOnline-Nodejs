@@ -4,24 +4,20 @@ import 'package:get/get.dart';
 
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/pressable_scale.dart';
-import '../../../theme/widgets/truck_road.dart';
+import '../../../theme/widgets/v2_art.dart';
 import '../../../utils/booking_guarantee.dart' show rupeesText;
-import '../../../utils/colors.dart' show notifier;
 
-/// Top of the Home tab: pickup location, wallet chip, notifications, heading and the moving truck.
+/// Top of the Home tab (v2, Porter-style): solid brand-orange band with the logo, wallet chip,
+/// notifications, headline and the H1 illustration. The pickup card overlaps its bottom [overlap] px.
 /// Presentational only — every tap goes to a callback owned by home.dart.
 class HomeHeader extends StatelessWidget {
   const HomeHeader({
     super.key,
-    required this.address,
-    required this.onLocationTap,
     required this.onNotificationTap,
     this.walletBalance,
     this.onWalletTap,
   });
 
-  final String? address;
-  final VoidCallback onLocationTap;
   final VoidCallback onNotificationTap;
   final double? walletBalance;
   final VoidCallback? onWalletTap;
@@ -30,130 +26,99 @@ class HomeHeader extends StatelessWidget {
   static String? pickupLine({required String? confirmedPickup, required String? gpsAddress}) =>
       (confirmedPickup != null && confirmedPickup.trim().isNotEmpty) ? confirmedPickup : gpsAddress;
 
-  /// How far the route card overlaps the bottom of this header (home.dart uses the same value).
-  static const double overlap = 72;
+  /// How far the pickup card overlaps the bottom of this header (home.dart uses the same value).
+  static const double overlap = 30;
+
+  static const Color _sub = Color(0xFF3A1A0B);
 
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
-    final shownAddress = (address == null || address!.trim().isEmpty) ? 'Location'.tr : address!;
-    final isDark = notifier.getIsDark == true;
+    final top = MediaQuery.paddingOf(context).top;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
-          .copyWith(statusBarColor: Colors.transparent),
-      child: ClipRect(
-      child: ColoredBox(
-        color: p.brandTint,
-        child: Stack(
-          children: [
-            Positioned(
-              right: -70,
-              top: -90,
-              child: ExcludeSemantics(
-                child: Container(
-                  width: 240,
-                  height: 240,
-                  decoration: BoxDecoration(shape: BoxShape.circle, color: p.brand.withValues(alpha: 0.08)),
-                ),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.fromLTRB(20, 14 + MediaQuery.paddingOf(context).top, 20, overlap + 56),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      // Dark icons read best on the orange band in both themes.
+      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: p.brand,
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(20, 14 + top, 20, overlap + 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: PressableScale(
-                          onTap: onLocationTap,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 44),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Picking up from'.tr, style: AppText.caption(p.inkMuted)),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Icon(Icons.location_on_outlined, size: 18, color: p.brand),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        shownAddress,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppText.bodyStrong(p.ink).copyWith(fontSize: 17),
-                                      ),
-                                    ),
-                                    Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: p.ink),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (walletBalance != null) ...[
-                        const SizedBox(width: AppSpace.s),
-                        PressableScale(
-                          onTap: onWalletTap,
-                          semanticLabel: 'Wallet balance'.tr,
-                          child: Container(
-                            height: 36,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: p.surface,
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: p.brand.withValues(alpha: 0.25)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.account_balance_wallet_outlined, size: 16, color: p.brand),
-                                const SizedBox(width: 6),
-                                Text(rupeesText(walletBalance!), style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(width: AppSpace.s),
-                      PressableScale(
-                        onTap: onNotificationTap,
-                        semanticLabel: 'Notifications'.tr,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: p.surface,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: p.brand.withValues(alpha: 0.25)),
-                          ),
-                          child: Icon(Icons.notifications_none_rounded, size: 22, color: p.ink),
-                        ),
-                      ),
-                    ],
+                  Expanded(
+                    child: Text('Shifter',
+                        maxLines: 1, style: AppText.title(p.onBrand).copyWith(letterSpacing: -0.3)),
                   ),
-                  const SizedBox(height: 18),
-                  Text('What are we moving today?'.tr, style: AppText.hero(p.ink)),
+                  if (walletBalance != null) ...[
+                    PressableScale(
+                      onTap: onWalletTap,
+                      semanticLabel: 'Wallet balance'.tr,
+                      child: Container(
+                        height: 36,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: AppShadow.card,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.account_balance_wallet_outlined, size: 16, color: Color(0xFF15171C)),
+                            const SizedBox(width: 6),
+                            Text(rupeesText(walletBalance!),
+                                style: AppText.bodyStrong(const Color(0xFF15171C)).copyWith(fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.s),
+                  ],
+                  PressableScale(
+                    onTap: onNotificationTap,
+                    semanticLabel: 'Notifications'.tr,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: AppShadow.card,
+                      ),
+                      child: const Icon(Icons.notifications_none_rounded, size: 22, color: Color(0xFF15171C)),
+                    ),
+                  ),
                 ],
               ),
-            ),
-            const Positioned(
-              key: ValueKey('home-header-truck'),
-              left: 0,
-              right: 0,
-              bottom: overlap + 4,
-              height: 44,
-              child: RepaintBoundary(child: TruckRoad()),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Move anything,\nanywhere'.tr,
+                            style: AppText.title(p.onBrand).copyWith(height: 1.2, letterSpacing: -0.3)),
+                        const SizedBox(height: 4),
+                        Text('Trucks, tempos and bikes'.tr,
+                            maxLines: 2, style: AppText.body(_sub).copyWith(fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.m),
+                  const V2Art(asset: 'assets/v2/home_header.png', placeholderLabel: 'H1', width: 120, height: 86),
+                ],
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
 }
-
