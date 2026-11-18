@@ -7,6 +7,7 @@ import 'package:goParcel/theme/legacy_color_map.dart';
 const _swept = <String>[
   'lib/screens/home/waiting_screen.dart',
   'lib/screens/myorder/widgets/trip_complete_widgets.dart',
+  'lib/screens/myorder/trackingway.dart',
 ];
 
 void main() {
