@@ -688,6 +688,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                                       hintStyle:
                                           AppText.body(_isListening ? p.danger : p.inkSubtle).copyWith(fontSize: 14.5),
                                       border: InputBorder.none,
+                                      // The app theme adds its own outline; the box around this field already draws one.
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      filled: false,
                                       contentPadding: const EdgeInsets.symmetric(vertical: 13),
                                     ),
                                   ),
