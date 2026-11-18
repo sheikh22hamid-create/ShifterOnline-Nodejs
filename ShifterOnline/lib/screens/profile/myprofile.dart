@@ -27,6 +27,7 @@ import 'blocked_drivers.dart';
 import 'favorite_drivers.dart';
 import 'premium_plans_screen.dart';
 import 'LeadReferralScreen.dart';
+import '../home/referral_points_screen.dart';
 import '../../utils/Calculation.dart';
 import '../../theme/app_tokens.dart';
 
@@ -810,6 +811,15 @@ class _MyProfileState extends State<MyProfile> {
             ),
             child: Column(
               children: [
+                _buildMenuItem(
+                  icon: Icons.toll_outlined,
+                  iconColor: const Color(0xFF9A6700),
+                  iconBgColor: const Color(0xFFFFF6DB),
+                  title: "Reward Points",
+                  subtitle: "Your points and how to use them",
+                  onTap: () => Get.to(() => const ReferralPointsScreen()),
+                ),
+                _buildItemDivider(),
                 _buildMenuItem(
                   icon: Icons.favorite_rounded,
                   iconColor: const Color(0xFFF43F5E),
