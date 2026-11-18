@@ -74,6 +74,22 @@ void main() {
     expect(border.top.color, AppPalette.light.brand);
   });
 
+  testWidgets('card unselected has no border and a soft shadow', (tester) async {
+    await tester.pumpWidget(_host(const AppCard(child: Text('x'))));
+    final d = _cardDecoration(tester);
+    expect(d.border, isNull);
+    expect(d.boxShadow, AppShadow.card);
+  });
+
+  testWidgets('primary button is 52 high with radius 12', (tester) async {
+    await tester.pumpWidget(_host(AppPrimaryButton(label: 'Go', onPressed: () {})));
+    final box = tester.widget<Container>(
+        find.descendant(of: find.byType(AppPrimaryButton), matching: find.byType(Container)).first);
+    expect(box.constraints?.maxHeight, 52);
+    expect((box.decoration as BoxDecoration).borderRadius, BorderRadius.circular(12));
+    expect((box.decoration as BoxDecoration).boxShadow, isNull);
+  });
+
   testWidgets('card tap calls onTap', (tester) async {
     var taps = 0;
     await tester.pumpWidget(_host(AppCard(onTap: () => taps++, child: const Text('card'))));

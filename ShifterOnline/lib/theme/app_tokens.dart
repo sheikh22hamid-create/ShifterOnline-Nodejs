@@ -54,7 +54,7 @@ class AppPalette {
     brandTint: Color(0xFFFFF0E8),
     onBrand: Color(0xFF1A0B04),
     brandText: Color(0xFFB83C0C),
-    canvas: Color(0xFFF7F7F7),
+    canvas: Color(0xFFF3F5F9),
     surface: Color(0xFFFFFFFF),
     ink: Color(0xFF15171C),
     inkMuted: Color(0xFF4B515E),
@@ -97,6 +97,13 @@ class AppPalette {
 
   /// Palette for the app's current theme (global [notifier] from utils/colors.dart).
   static AppPalette get current => of(notifier.getIsDark == true);
+}
+
+/// Soft card elevation (v2, Porter-style): no borders on main cards.
+class AppShadow {
+  static const List<BoxShadow> card = [
+    BoxShadow(color: Color(0x0F101828), blurRadius: 8, offset: Offset(0, 2)),
+  ];
 }
 
 class AppRadius {

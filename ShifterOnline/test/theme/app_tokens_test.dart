@@ -9,7 +9,7 @@ void main() {
     expect(p.brand, const Color(0xFFFF6B35));
     expect(p.onBrand, const Color(0xFF1A0B04));
     expect(p.brandText, const Color(0xFFB83C0C));
-    expect(p.canvas, const Color(0xFFF7F7F7));
+    expect(p.canvas, const Color(0xFFF3F5F9));
     expect(p.surface, const Color(0xFFFFFFFF));
     expect(p.ink, const Color(0xFF15171C));
     expect(p.brandTint, const Color(0xFFFFF0E8));
@@ -23,6 +23,11 @@ void main() {
       expect(contrastRatio(p.inkMuted, p.surface), greaterThanOrEqualTo(4.5), reason: 'inkMuted dark=$dark');
       expect(contrastRatio(p.brandText, p.surface), greaterThanOrEqualTo(4.5), reason: 'brandText dark=$dark');
     }
+  });
+
+  test('card shadow is a soft 8px blur', () {
+    expect(AppShadow.card.single.blurRadius, 8);
+    expect(AppShadow.card.single.offset, const Offset(0, 2));
   });
 
   test('dark palette differs from light on surfaces and ink', () {

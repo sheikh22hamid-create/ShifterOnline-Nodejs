@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_tokens.dart';
 import 'pressable_scale.dart';
 
-/// Surface card with a thin border; `selected` switches to the brand outline and tint.
+/// Surface card with a soft shadow and no border; `selected` switches to the brand outline and tint.
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -25,7 +25,8 @@ class AppCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected ? p.brandTint : p.surface,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        border: Border.all(color: selected ? p.brand : p.line, width: selected ? 1.5 : 1),
+        border: selected ? Border.all(color: p.brand, width: 1.5) : null,
+        boxShadow: selected ? null : AppShadow.card,
       ),
       child: Padding(padding: padding, child: child),
     );

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_tokens.dart';
 import 'pressable_scale.dart';
 
-/// Main call to action: brand fill, dark (onBrand) label, 54 high.
+/// Main call to action: brand fill, dark (onBrand) label, 52 high, radius 12.
 class AppPrimaryButton extends StatelessWidget {
   const AppPrimaryButton({
     super.key,
@@ -29,15 +29,12 @@ class AppPrimaryButton extends StatelessWidget {
       child: PressableScale(
         onTap: onPressed,
         child: Container(
-          height: 54,
+          height: 52,
           width: expand ? double.infinity : null,
           padding: const EdgeInsets.symmetric(horizontal: 18),
           decoration: BoxDecoration(
             color: p.brand,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: enabled
-                ? [BoxShadow(color: p.brand.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))]
-                : null,
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
