@@ -58,4 +58,21 @@ void main() {
       expect(v, isEmpty, reason: '$path:\n${v.join('\n')}');
     }
   });
+
+  test('dark-mode text check flags blue, black87 text, dark Material shades and AuthTokens; not shadows', () {
+    const src = 'color: Colors.blue.shade50,\n'
+        'style: TextStyle(color: Colors.black87),\n'
+        'Text(x, style: TextStyle(color: Colors.red.shade800)),\n'
+        'fillColor: AuthTokens.inputFill,\n'
+        'BoxShadow(color: Colors.black87.withValues(alpha: 0.1)),\n'
+        'barrierColor: Colors.black54,';
+    expect(darkModeTextViolations(src).length, 4);
+  });
+
+  test('swept files pass the dark-mode text check', () {
+    for (final path in _swept) {
+      final v = darkModeTextViolations(File(path).readAsStringSync());
+      expect(v, isEmpty, reason: '$path:\n${v.join('\n')}');
+    }
+  });
 }

@@ -174,9 +174,9 @@ class _CompleteProfileState extends State<CompleteProfile> {
           ListTile(
             title: Text(title,
                 style:
-                    const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16)),
+                    TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16, color: AppPalette.current.ink)),
             trailing: IconButton(
-                icon: const Icon(Icons.close_rounded),
+                icon: Icon(Icons.close_rounded, color: AppPalette.current.ink),
                 onPressed: () => Navigator.pop(ctx)),
           ),
           const Divider(height: 1),
@@ -215,7 +215,7 @@ class _CompleteProfileState extends State<CompleteProfile> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(
         decoration: BoxDecoration(
-          color: AuthTokens.inputFill,
+          color: AppPalette.current.canvas,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
               color:
@@ -255,11 +255,11 @@ class _CompleteProfileState extends State<CompleteProfile> {
 
   @override
   Widget build(BuildContext context) {
-    const link = TextStyle(
-      color: AuthTokens.primary,
+    final link = TextStyle(
+      color: AppPalette.current.brand,
       fontFamily: 'Gilroy_Bold',
       decoration: TextDecoration.underline,
-      decorationColor: AuthTokens.primary,
+      decorationColor: AppPalette.current.brand,
     );
 
     return PopScope(
@@ -361,9 +361,8 @@ class _CompleteProfileState extends State<CompleteProfile> {
                           width: double.infinity,
                           height: 52,
                           decoration: BoxDecoration(
-                            color: AuthTokens.primaryLight,
+                            color: AppPalette.current.brand,
                             borderRadius: BorderRadius.circular(14),
-                            boxShadow: AuthTokens.cta,
                           ),
                           child: Center(
                             child: _submitting

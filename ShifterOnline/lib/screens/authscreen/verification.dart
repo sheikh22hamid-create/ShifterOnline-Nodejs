@@ -227,13 +227,13 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                         padding: EdgeInsets.all(10),
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: whitecolor,
+                            color: AppPalette.current.onBrand,
                           ),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
                           Icons.arrow_back,
-                          color: whitecolor,
+                          color: AppPalette.current.onBrand,
                         ),
                       ),
                     ),
@@ -241,7 +241,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                     Text(
                       "Verification Code".tr,
                       style: TextStyle(
-                        color: whitecolor,
+                        color: AppPalette.current.onBrand,
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 22,
                       ),
@@ -348,7 +348,7 @@ class _VerificationState extends State<Verification> with CodeAutoFill {
                              borderRadius: BorderRadius.circular(15),
                            ),
                            child: Center(
-                             child: SpinKitThreeBounce(color: whitecolor, size: 25.0),
+                             child: SpinKitThreeBounce(color: AppPalette.current.onBrand, size: 25.0),
                            ),
                          )
                       : SizedBox(

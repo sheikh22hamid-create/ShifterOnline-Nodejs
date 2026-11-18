@@ -97,3 +97,28 @@ List<String> lightOnlySurfaceViolations(String source) {
   }
   return out;
 }
+
+final RegExp _blue = RegExp(r'Colors\.(blue|lightBlue|indigo)\b');
+final RegExp _blackText = RegExp(r'Colors\.black(87|54|45)\b(?!\.with)');
+final RegExp _darkShade = RegExp(r'Colors\.\w+\.shade[6-9]00\b');
+
+/// Text/foreground colours that ignore dark mode (or are blue, which spec §2 forbids): any Material blue,
+/// `Colors.black87/54/45` outside shadows/barriers, `Colors.<hue>.shade600–900`, and the login-only
+/// `AuthTokens` light palette.
+List<String> darkModeTextViolations(String source) {
+  final out = <String>[];
+  final lines = source.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i];
+    final lower = line.toLowerCase();
+    // Shadows, barriers and dark snackbar/toast backgrounds are overlays, not text.
+    final overlay = lower.contains('shadow') || lower.contains('barrier') || lower.contains('backgroundcolor: colors.black');
+    if (_blue.hasMatch(line) ||
+        (!overlay && _blackText.hasMatch(line)) ||
+        _darkShade.hasMatch(line) ||
+        line.contains('AuthTokens.')) {
+      out.add('line ${i + 1}: ${line.trim()}');
+    }
+  }
+  return out;
+}
