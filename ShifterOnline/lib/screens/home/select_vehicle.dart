@@ -993,6 +993,17 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       dropMobile: _text(_dropData['c_number']),
       onConfirmPayment: (payValue, _, receiverPay) => _submitOrder(payValue, category, model, fee, receiverPay),
       onViewBreakup: () => _showFareBreakdown(model, fee),
+      // Display only (Review card / address sheet / guarantee line).
+      vehicleName: _vehicleName(selected),
+      vehicleImageUrl: _image(selected).isEmpty ? null : Config.resolveImageUrl(_image(selected)),
+      timeLabel: _currentBookingType == 2 && _scheduledFor != null
+          ? DateFormat('EEE, d MMM yyyy · h:mm a').format(_scheduledFor!)
+          : (_currentBookingType == 3 && _lowFareWindow.date != null
+              ? DateFormat('EEE, d MMM yyyy').format(_lowFareWindow.date!)
+              : 'Now'.tr),
+      pickupData: _pickupData,
+      dropData: _dropData,
+      guaranteeAmount: _guaranteeAmount,
     ));
   }
 
