@@ -81,6 +81,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _vehicleRowKey = GlobalKey();
   final GlobalKey _selectedCardKey = GlobalKey();
+  // Low Fare date/window pickers live in this card: "Book Next Day" scrolls back to it when they're missing.
+  final GlobalKey _bookingTypeCardKey = GlobalKey();
   // Set only by a user tap on a vehicle card, so the screen never auto-scrolls on open.
   bool _autoScrollPending = false;
 
@@ -972,6 +974,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (selected == null || model == null || fee == null || _booking || _checkingFreeBooking) return;
     final windowProblem = _lowFareWindowProblem();
     if (windowProblem != null) {
+      final cardContext = _bookingTypeCardKey.currentContext;
+      if (cardContext != null) {
+        Scrollable.ensureVisible(cardContext, duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+      }
       ApiWrapper.showToastMessage(windowProblem);
       return;
     }
@@ -1527,6 +1533,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                   _routeSummary(),
                   const SizedBox(height: 12),
                   BookingTypeCard(
+                    key: _bookingTypeCardKey,
                     bookingType: _currentBookingType,
                     scheduleLabel:
                         _scheduledFor == null ? null : DateFormat('EEE, d MMM yyyy · h:mm a').format(_scheduledFor!),
@@ -2283,7 +2290,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
   /// Low Fare quote + pickup date + pickup window — moved unchanged from the bottom bar into the booking-type card.
   Widget? _lowFareChild() {
-    if (_currentBookingType != 3 || _lowFare == null) return null;
+    if (!BookingTypeCard.showLowFareQuote(
+        bookingType: _currentBookingType, hasQuote: _lowFare != null, modelChosen: _selectedModel != null)) {
+      return null;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,

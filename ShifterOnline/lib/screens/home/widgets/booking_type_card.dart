@@ -27,6 +27,11 @@ class BookingTypeCard extends StatelessWidget {
   /// Low Fare date + pickup window pickers (owned by the screen); shown only for Low Fare.
   final Widget? lowFareChild;
 
+  /// The Low Fare quote belongs to the chosen vehicle's delivery option: until one is chosen (vehicle just
+  /// switched, or its quote failed) the previous vehicle's price must not show.
+  static bool showLowFareQuote({required int bookingType, required bool hasQuote, required bool modelChosen}) =>
+      bookingType == 3 && hasQuote && modelChosen;
+
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;

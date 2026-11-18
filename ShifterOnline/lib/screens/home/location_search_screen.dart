@@ -23,6 +23,7 @@ import '../../utils/location_intent_handler.dart';
 import 'location_confirm_map_screen.dart';
 import 'widgets/place_list_tile.dart';
 import 'widgets/saved_places_row.dart';
+import 'widgets/search_results_pane.dart';
 import '../authscreen/signin.dart';
 import '../profile/AddressList.dart';
 import '../../theme/widgets/route_marker.dart';
@@ -754,59 +755,67 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
               ),
             ),
 
-            // ── Current location row ─────────────────────────────────────────
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: p.surface,
-                borderRadius: BorderRadius.circular(AppRadius.card),
-                boxShadow: AppShadow.card,
-              ),
-              child: PlaceListTile(
-                title: (_isPickup ? "Your Current Location" : "Use Current Location").tr,
-                subtitle: _currentAddress.isNotEmpty
-                    ? _currentAddress
-                    : (_isDetectingLocation
-                        ? "Detecting GPS location...".tr
-                        : "Tap to use device current location".tr),
-                icon: Icons.my_location_rounded,
-                onTap: _useCurrentLocation,
-                trailing: _isDetectingLocation
-                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: p.brand))
-                    : Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
-              ),
-            ),
-
-            // ── Saved places (moved here from Home) ─────────────────────────
-            if (_isDrop && !widget.locationOnly)
-              SavedPlacesRow(
-                places: _savedPlaces,
-                loading: _isLoadingSavedPlaces,
-                onSelect: _selectSavedPlace,
-                onAdd: _addSavedPlace,
-                onManage: () async {
-                  await Get.to(() => const AddressListPage());
-                  _loadSavedPlaces();
-                },
-              ),
-
-            // ── Body Results / Recents ───────────────────────────────────────
+            // ── Everything below the search card scrolls as one list (small phones + keyboard) ──
             Expanded(
-              child: _isSearching
-                  ? ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: const [
-                        AppSkeleton(height: 56),
-                        SizedBox(height: 10),
-                        AppSkeleton(height: 56),
-                        SizedBox(height: 10),
-                        AppSkeleton(height: 56),
-                      ],
+              child: SearchResultsPane(
+                children: [
+                  // Current location row
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: p.surface,
+                      borderRadius: BorderRadius.circular(AppRadius.card),
+                      boxShadow: AppShadow.card,
+                    ),
+                    child: PlaceListTile(
+                      title: (_isPickup ? "Your Current Location" : "Use Current Location").tr,
+                      subtitle: _currentAddress.isNotEmpty
+                          ? _currentAddress
+                          : (_isDetectingLocation
+                              ? "Detecting GPS location...".tr
+                              : "Tap to use device current location".tr),
+                      icon: Icons.my_location_rounded,
+                      onTap: _useCurrentLocation,
+                      trailing: _isDetectingLocation
+                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: p.brand))
+                          : Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 20),
+                    ),
+                  ),
+
+                  // Saved places (moved here from Home) — only before the customer starts typing
+                  if (_isDrop && !widget.locationOnly && _searchController.text.trim().isEmpty)
+                    SavedPlacesRow(
+                      places: _savedPlaces,
+                      loading: _isLoadingSavedPlaces,
+                      onSelect: _selectSavedPlace,
+                      onAdd: _addSavedPlace,
+                      onManage: () async {
+                        await Get.to(() => const AddressListPage());
+                        _loadSavedPlaces();
+                      },
+                    ),
+
+                  // Results / recents
+                  if (_isSearching)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          AppSkeleton(height: 56),
+                          SizedBox(height: 10),
+                          AppSkeleton(height: 56),
+                          SizedBox(height: 10),
+                          AppSkeleton(height: 56),
+                        ],
+                      ),
                     )
-                  : _searchController.text.trim().isNotEmpty
-                      ? _buildPredictionsList(notifier, themeColor)
-                      : _buildRecentSearchesList(notifier, themeColor),
+                  else if (_searchController.text.trim().isNotEmpty)
+                    _buildPredictionsList(notifier, themeColor)
+                  else
+                    _buildRecentSearchesList(notifier, themeColor),
+                ],
+              ),
             ),
           ],
         ),
@@ -840,7 +849,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
   Widget _searchEmptyState(AppPalette p, IconData icon, String title, String body) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -923,8 +932,10 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
   Widget _placeListCard(AppPalette p,
       {String? header, required int itemCount, required Widget Function(int index) itemBuilder}) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (header != null)
           Padding(
@@ -947,6 +958,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
           ),
         ),
       ],
+      ),
     );
   }
 

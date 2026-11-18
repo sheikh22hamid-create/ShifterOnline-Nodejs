@@ -69,4 +69,12 @@ void main() {
         textScale: 1.3));
     expect(tester.takeException(), isNull);
   });
+
+  test('low fare quote shows only for Low Fare, with a quote, after a delivery option is chosen', () {
+    expect(BookingTypeCard.showLowFareQuote(bookingType: 3, hasQuote: true, modelChosen: true), isTrue);
+    // Switching vehicle clears the model until the new quote is in: never show the old vehicle's price.
+    expect(BookingTypeCard.showLowFareQuote(bookingType: 3, hasQuote: true, modelChosen: false), isFalse);
+    expect(BookingTypeCard.showLowFareQuote(bookingType: 3, hasQuote: false, modelChosen: true), isFalse);
+    expect(BookingTypeCard.showLowFareQuote(bookingType: 1, hasQuote: true, modelChosen: true), isFalse);
+  });
 }
