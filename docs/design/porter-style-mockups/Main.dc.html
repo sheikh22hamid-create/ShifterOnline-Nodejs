@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Shifter v2 Home</title>
+<title>Shifter v2 Home, light header</title>
 <script src="./support.js"></script>
 </head>
 <body>
@@ -18,30 +18,30 @@ button{font-family:inherit}
 </helmet>
 <div style="width: 390px; height: 844px; box-sizing: border-box; background: #F3F5F9; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #15171C; position: relative; overflow: hidden; display: flex; flex-direction: column">
 
-  <div style="background: #FFF0E8; height: 200px; border-radius: 0 0 24px 24px; padding: 18px 20px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; flex-shrink: 0">
+  <div style="background: {{h.bg}}; height: 216px; border-radius: 0 0 24px 24px; padding: 18px 20px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; flex-shrink: 0">
     <div style="display: flex; align-items: center; justify-content: space-between">
-      <span style="font-size: 22px; font-weight: 800; color: #B83C0C; letter-spacing: -0.3px">Shifter</span>
+      <span style="font-size: 22px; font-weight: 800; color: {{h.logo}}; letter-spacing: -0.3px">Shifter</span>
       <div style="display: flex; align-items: center; gap: 10px">
-        <button style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: none; border-radius: 999px; background: #FFFFFF; font-size: 14px; font-weight: 700; color: #15171C; box-shadow: 0 2px 8px rgba(16,24,40,0.06)">
+        <button style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: none; border-radius: 999px; background: #FFFFFF; font-size: 14px; font-weight: 700; color: #15171C; box-shadow: 0 2px 8px rgba(16,24,40,0.08)">
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15171C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"></rect><path d="M16 13h2"></path><path d="M3 10h18"></path></svg>
           ₹250
         </button>
-        <button aria-label="Notifications" style="width: 44px; height: 44px; border: none; border-radius: 999px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(16,24,40,0.06)">
+        <button aria-label="Notifications" style="width: 44px; height: 44px; border: none; border-radius: 999px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(16,24,40,0.08)">
           <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15171C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
         </button>
       </div>
     </div>
     <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 10px">
       <div style="display: flex; flex-direction: column; gap: 4px; padding-top: 2px">
-        <span style="font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: -0.3px">Move anything,<br>anywhere</span>
-        <span style="font-size: 13px; color: #4B515E; font-weight: 500">Trucks, tempos and bikes at fair prices</span>
+        <span style="font-size: 22px; font-weight: 800; line-height: 1.2; letter-spacing: -0.3px; color: {{h.title}}">Move anything,<br>anywhere</span>
+        <span style="font-size: 13px; color: {{h.sub}}; font-weight: 600">Trucks, tempos and bikes</span>
       </div>
-      <div style="width: 120px; height: 86px; border: 1.5px dashed #D9A88F; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #8A5A44; flex-shrink: 0">H1 art</div>
+      <div style="width: 120px; height: 86px; border: 1.5px dashed {{h.box}}; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: {{h.title}}; flex-shrink: 0">H1 art</div>
     </div>
   </div>
 
-  <div style="padding: 0 16px; margin-top: -34px; display: flex; flex-direction: column; gap: 12px">
-    <a href="#" style="text-decoration: none; color: inherit; background: #FFFFFF; border-radius: 16px; box-shadow: 0 2px 8px rgba(16,24,40,0.06); padding: 14px 16px; display: flex; align-items: center; gap: 12px; min-height: 64px; box-sizing: border-box">
+  <div style="padding: 0 16px; margin-top: -30px; display: flex; flex-direction: column; gap: 12px">
+    <a href="#" style="text-decoration: none; color: inherit; background: #FFFFFF; border-radius: 16px; box-shadow: 0 4px 14px rgba(16,24,40,0.10); padding: 14px 16px; display: flex; align-items: center; gap: 12px; min-height: 64px; box-sizing: border-box">
       <span style="width: 28px; height: 28px; border-radius: 999px; background: #16A34A; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
       </span>
@@ -60,13 +60,13 @@ button{font-family:inherit}
 
     <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
       <sc-for list="{{tiles}}" as="t" hint-placeholder-count="4">
-        <a href="#" style="text-decoration: none; color: inherit; background: #FFFFFF; border-radius: 16px; box-shadow: 0 2px 8px rgba(16,24,40,0.06); padding: 12px; display: flex; flex-direction: column; gap: 8px; height: 140px; box-sizing: border-box">
-          <span style="height: 66px; border: 1.5px dashed #D9A88F; background: #FFF8F4; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #8A5A44">{{t.art}}</span>
-          <span style="display: flex; align-items: center; justify-content: space-between">
-            <span style="font-size: 16px; font-weight: 700">{{t.label}}</span>
+        <a href="#" style="text-decoration: none; color: inherit; background: #FFFFFF; border-radius: 16px; box-shadow: 0 2px 8px rgba(16,24,40,0.06); padding: 12px; display: flex; flex-direction: column; gap: 8px; height: 132px; box-sizing: border-box">
+          <span style="height: 60px; border: 1.5px dashed #D9A88F; background: #FFF8F4; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #8A5A44">{{t.art}}</span>
+          <span style="display: flex; align-items: center; justify-content: space-between; gap: 4px">
+            <span style="font-size: 15px; font-weight: 700; white-space: nowrap">{{t.label}}</span>
             <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#15171C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
           </span>
-          <span style="font-size: 12px; color: #4B515E; margin-top: -6px">{{t.sub}}</span>
+          <span style="font-size: 12px; color: #4B515E; margin-top: -6px; white-space: nowrap">{{t.sub}}</span>
         </a>
       </sc-for>
     </div>
@@ -82,30 +82,41 @@ button{font-family:inherit}
   </div>
 
   <nav aria-label="Main" style="position: absolute; left: 0; right: 0; bottom: 0; height: 72px; background: #FFFFFF; box-shadow: 0 -2px 10px rgba(16,24,40,0.06); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
-    <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="4">
-      <a href="#" style="text-decoration: none; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: {{tab.color}}; font-size: 12px; font-weight: {{tab.weight}}">
-        <span style="position: absolute; top: 0; width: 36px; height: 3px; border-radius: 0 0 3px 3px; background: {{tab.bar}}"></span>
-        <span style="width: 22px; height: 22px; border-radius: 6px; border: 2px solid {{tab.color}}; box-sizing: border-box"></span>
-        {{tab.label}}
-      </a>
-    </sc-for>
+    <a href="#" style="text-decoration: none; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #B83C0C; font-size: 12px; font-weight: 700">
+      <span style="position: absolute; top: 0; width: 36px; height: 3px; border-radius: 0 0 3px 3px; background: #FF6B35"></span>
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="#FF6B35" stroke="#B83C0C" stroke-width="1.8" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"></path></svg>
+      Home
+    </a>
+    <a href="#" style="text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #4B515E; font-size: 12px; font-weight: 500">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4B515E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path><path d="M9 8h6"></path><path d="M9 12h6"></path></svg>
+      Orders
+    </a>
+    <a href="#" style="text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #4B515E; font-size: 12px; font-weight: 500">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4B515E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="3"></rect><path d="M3 10h18"></path><path d="M16 14h2"></path></svg>
+      Wallet
+    </a>
+    <a href="#" style="text-decoration: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #4B515E; font-size: 12px; font-weight: 500">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4B515E" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"></path></svg>
+      Account
+    </a>
   </nav>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+<script type="text/x-dc" data-dc-script data-props='{"header":{"editor":"enum","options":["tint","orange"],"default":"tint"},"$preview":{"width":390,"height":844}}'>
 class Component extends DCLogic {
   renderVals() {
-    var tabs = ['Home', 'Orders', 'Wallet', 'Account'].map(function (l, i) {
-      return { label: l, color: i === 0 ? '#B83C0C' : '#4B515E', weight: i === 0 ? 700 : 500, bar: i === 0 ? '#FF6B35' : 'transparent' };
-    });
+    var mode = this.props.header ?? 'tint';
+    var h = mode === 'orange'
+      ? { bg: '#FF6B35', logo: '#1A0B04', title: '#1A0B04', sub: '#3A1A0B', box: 'rgba(26,11,4,0.45)' }
+      : { bg: '#FFF0E8', logo: '#B83C0C', title: '#15171C', sub: '#4B515E', box: '#D9A88F' };
     return {
+      h: h,
       tiles: [
         { art: 'T1 art', label: 'Book Now', sub: 'Instant pickup' },
-        { art: 'T2 art', label: 'Schedule', sub: 'Pick a date and time' },
+        { art: 'T2 art', label: 'Schedule', sub: 'Pick date and time' },
         { art: 'T3 art', label: 'Low Fare', sub: 'Next day, lower price' },
         { art: 'T4 art', label: 'Customise Order', sub: 'Offer your own fare' }
-      ],
-      tabs: tabs
+      ]
     };
   }
 }
