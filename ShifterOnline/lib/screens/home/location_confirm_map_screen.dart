@@ -21,6 +21,7 @@ import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_buttons.dart';
 import '../../theme/widgets/pressable_scale.dart';
 import 'widgets/pin_drop_marker.dart';
+import '../../theme/widgets/route_marker.dart';
 
 class LocationConfirmMapScreen extends StatefulWidget {
   final String locationType; // 'Pickup', 'Drop', 'Stop'
@@ -519,15 +520,22 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: _isPickup && !_isAddress ? p.successTint : p.brandTint,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(Icons.location_on_outlined, color: indicatorColor, size: 18),
-                              ),
+                              if (_isAddress)
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: _isPickup && !_isAddress ? p.successTint : p.brandTint,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.location_on_outlined, color: indicatorColor, size: 18),
+                                )
+                              else if (_isPickup)
+                                const RouteMarker.pickup(size: 32)
+                              else if (_isDrop)
+                                const RouteMarker.drop(size: 32)
+                              else
+                                RouteMarker.stop(widget.stopIndex + 1, size: 32),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
@@ -562,15 +570,16 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
 
                           const SizedBox(height: 14),
 
-                          // House / Building / Flat input
+                          if (widget.locationOnly) ...[
                           TextField(
                             controller: _houseNoController,
                             style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
                             decoration: appInputDecoration(hint: "House / Flat / Block / Floor No. (Optional)".tr),
                           ),
+                          ],
 
                           if (!widget.locationOnly) ...[
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 2),
 
                           // Section Heading: Contact Details
                           Text(
@@ -622,6 +631,41 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                             ),
                           ),
 
+                          // "Use my mobile number" Checkbox
+                          if (_myMobile.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () => _toggleUseMyNumber(null),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(minHeight: 44),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: Checkbox(
+                                        value: _useMyNumber,
+                                        activeColor: p.brand,
+                                        checkColor: p.onBrand,
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
+                                        onChanged: (val) => _toggleUseMyNumber(val),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Flexible(
+                                      child: Text(
+                                        "Use my mobile number (@n)".trParams({'n': _myMobile}),
+                                        style: AppText.caption(p.ink).copyWith(fontSize: 13),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+
                           // Optional WhatsApp opt-in (default unchecked)
                           if (!_isAddress) ...[
                             const SizedBox(height: 10),
@@ -664,40 +708,14 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
                             ),
                           ],
 
-                          // "Use my mobile number" Checkbox
-                          if (_myMobile.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            InkWell(
-                              borderRadius: BorderRadius.circular(8),
-                              onTap: () => _toggleUseMyNumber(null),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(minHeight: 44),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: Checkbox(
-                                        value: _useMyNumber,
-                                        activeColor: p.brand,
-                                        checkColor: p.onBrand,
-                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-                                        onChanged: (val) => _toggleUseMyNumber(val),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Flexible(
-                                      child: Text(
-                                        "Use my mobile number (@n)".trParams({'n': _myMobile}),
-                                        style: AppText.caption(p.ink).copyWith(fontSize: 13),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
+                          const SizedBox(height: 12),
+
+                          // House / Building / Flat input
+                          TextField(
+                            controller: _houseNoController,
+                            style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14),
+                            decoration: appInputDecoration(hint: "House / Flat / Block / Floor No. (Optional)".tr),
+                          ),
 
                           const SizedBox(height: 12),
 
