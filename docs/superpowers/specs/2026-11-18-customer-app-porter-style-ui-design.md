@@ -103,8 +103,14 @@ v1 rule).
   - **Customise Order** → `CustomiseOrderTile.open` (existing; keeps its switch/"Coming Soon" rule).
 - **Free Ride Chance strip** (Porter "Explore Rewards" style; chance wording, never "first booking
   free") → existing Free Ride screen.
-- Removed from Home (moved, not deleted): route card, vehicle cards, "More on Shifter" grid, saved
-  places row, how-to-use card. Booking Guarantee strip stays off Home (v1 owner answer).
+- **Reward milestone card** (server-enabled `ride_amount_reward`) stays on Home under the tiles, same
+  condition as today. **How to use** card stays on Home under the Free Ride strip, same condition as today
+  (new customers, admin switch, max-orders rule) — its data loads on Home (Claude's call, replaces the
+  earlier "move to Account" call).
+- Removed from Home (moved, not deleted): route card (drop/stops/edit now on drop search + Select
+  Vehicle), vehicle cards, "More on Shifter" grid (Customise Order → tile; Premium Plans, Favourite
+  Drivers, Saved Addresses, Help & FAQs already in Account; **Reward Points gets an Account row**),
+  saved-places quick row (saved places stay in drop search). Booking Guarantee strip stays off Home.
 - **Bottom nav:** plain white bar, 4 tabs **Home · Orders · Wallet · Account**, active tab orange with
   a short top indicator (Porter style). Centre "Book now" button removed (tiles replace it).
 
@@ -160,8 +166,7 @@ transactions (All/Credit/Debit + filter). Keeps quick amounts, 2.5% fee + ₹50,
 Porter grouped cards: profile header (name, email/mobile, View/Edit, **Add GST Details**); card 1 Saved
 Addresses, Business/GST; card 2 Premium Plans, Free Ride status, Reward Points; card 3 Refer & Earn
 (Invite button), Refer business leads, Share app; card 4 Favourite Drivers, Blocked Drivers; card 5
-Language, Dark mode; card 6 Help & Support, **How to use** (admin `how_to_use_url`, moved from Home —
-Claude's call), FAQs, Privacy, Terms; then Log out, Delete account.
+Language, Dark mode; card 6 Help & Support, FAQs, Privacy, Terms; then Log out, Delete account.
 
 ### 6.10 Login / OTP
 v1 single-entry login unchanged in flow; restyled to v2 tokens (Porter OTP layout per reference doc).
@@ -211,7 +216,7 @@ Device check on the owner's phone after each step; commit each finished step.
 | 4-tab nav, centre Book now removed | Claude's call | 2026-11-18 |
 | Goods/coupon/points/GST stay on Select Vehicle in an "Offers & Details" card | Owner | 2026-11-18 |
 | Booking-type "Change" = re-pick schedule time only | Claude's call | 2026-11-18 |
-| "How to use" moves to Account → Help card | Claude's call | 2026-11-18 |
+| "How to use" + reward milestone stay on Home, same conditions | Claude's call | 2026-11-18 |
 | Canvas `#F3F5F9`, card/button sizes in §5 | Claude's call | 2026-11-18 |
 | Home header solid orange with dark text (mockup review) | Owner | 2026-11-18 |
 
