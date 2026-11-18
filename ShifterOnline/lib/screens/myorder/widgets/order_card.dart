@@ -143,46 +143,49 @@ class OrderCard extends StatelessWidget {
             // ── Footer: status + actions ─────────────────────────────────────
             Row(
               children: [
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(color: chip.tint, borderRadius: BorderRadius.circular(8)),
-                    child: Text(status.tr,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppText.caption(chip.fg).copyWith(fontFamily: 'Gilroy_Bold')),
-                  ),
+                // The status chip keeps its full width; only the Book Again button gives way on narrow cards.
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: chip.tint, borderRadius: BorderRadius.circular(8)),
+                  child: Text(status.tr,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: AppText.caption(chip.fg).copyWith(fontFamily: 'Gilroy_Bold')),
                 ),
-                const Spacer(),
-                if (showActions) ...[
-                  IconButton(
-                    tooltip: (isFavorite ? 'Favorite' : 'Add Fav Order').tr,
-                    onPressed: onFavorite,
-                    icon: Icon(
-                      isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      color: isFavorite ? p.danger : p.inkMuted,
-                      size: 22,
+                if (showActions)
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          tooltip: (isFavorite ? 'Favorite' : 'Add Fav Order').tr,
+                          onPressed: onFavorite,
+                          icon: Icon(
+                            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            color: isFavorite ? p.danger : p.inkMuted,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: OutlinedButton(
+                            onPressed: onBookAgain,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: p.brandText,
+                              side: BorderSide(color: p.brand, width: 1.5),
+                              minimumSize: const Size(0, 40),
+                              padding: const EdgeInsets.symmetric(horizontal: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: Text('Book Again'.tr,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 13.5)),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 4),
-                  Flexible(
-                    flex: 3,
-                    child: OutlinedButton(
-                      onPressed: onBookAgain,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: p.brandText,
-                        side: BorderSide(color: p.brand, width: 1.5),
-                        minimumSize: const Size(0, 40),
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: Text('Book Again'.tr,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 13.5)),
-                    ),
-                  ),
-                ],
               ],
             ),
           ],

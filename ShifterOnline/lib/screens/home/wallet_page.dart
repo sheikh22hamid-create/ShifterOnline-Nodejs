@@ -17,6 +17,7 @@ import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'widgets/wallet_widgets.dart';
+import '../../theme/widgets/scroll_away_header.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -771,8 +772,9 @@ class _WalletPageState extends State<WalletPage> {
                 AppSkeleton(height: 64),
               ],
             )
-          : Column(
-              children: [
+          // Cards + history header scroll away above the list, so small phones keep room for transactions.
+          : ScrollAwayHeader(
+              header: [
                 // Balance + Reward Points cards (Porter "Payments" layout)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -818,9 +820,9 @@ class _WalletPageState extends State<WalletPage> {
                   ),
                 ),
 
-                // Transaction History List
-                Expanded(
-                  child: isHistoryLoading
+              ],
+              // Transaction History List
+              body: isHistoryLoading
                       ? ListView(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           children: const [
@@ -905,8 +907,6 @@ class _WalletPageState extends State<WalletPage> {
                               },
                               separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 8),
                             ),
-                ),
-              ],
             ),
     );
   }

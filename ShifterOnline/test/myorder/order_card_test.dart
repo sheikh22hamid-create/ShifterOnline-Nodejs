@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/myorder/widgets/order_card.dart';
 import 'package:goParcel/theme/app_tokens.dart';
@@ -86,5 +87,13 @@ void main() {
     await tester.pumpWidget(
         _host(_card(pickup: _longAddr, drop: _longAddr, amount: '₹12,345.00'), width: 360, textScale: 1.3));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('status chip is never cut off when Favourite / Book Again are shown', (tester) async {
+    for (final status in ['Completed', 'Cancelled']) {
+      await tester.pumpWidget(_host(_card(status: status, showActions: true)));
+      final para = tester.renderObject<RenderParagraph>(find.text(status));
+      expect(para.didExceedMaxLines, isFalse, reason: status);
+    }
   });
 }
