@@ -56,4 +56,8 @@ void main() {
     expect(t.binding.hasScheduledFrame, isTrue);
     await t.pumpWidget(const SizedBox());
   });
+
+  test('route pins are drawn once and shared (same future every call)', () {
+    expect(identical(routePinIcons(), routePinIcons()), isTrue);
+  });
 }

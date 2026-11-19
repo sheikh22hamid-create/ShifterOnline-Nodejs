@@ -141,6 +141,7 @@ class LocalString extends Translations {
           "You are covered": "You are covered",
           "You can leave this screen. We'll let you know when a driver accepts.": "You can leave this screen. We'll let you know when a driver accepts.",
           "Cancel booking": "Cancel booking",
+          "Finding a driver for your order": "Finding a driver for your order",
           "Select Pickup Location": "Select Pickup Location",
           "Select Drop Location": "Select Drop Location",
           "Select Stop @n": "Select Stop @n",

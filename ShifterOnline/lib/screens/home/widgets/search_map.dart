@@ -102,15 +102,11 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
   }
 
   Future<void> _loadIcons() async {
-    final p = AppPalette.current;
-    final results = await Future.wait([
-      _pinBitmap(p.success, Icons.arrow_upward_rounded),
-      _pinBitmap(p.danger, Icons.arrow_downward_rounded),
-    ]);
+    final (pick, drop) = await routePinIcons();
     if (!mounted) return;
     setState(() {
-      _pickupIcon = results[0];
-      _dropIcon = results[1];
+      _pickupIcon = pick;
+      _dropIcon = drop;
     });
   }
 
@@ -189,6 +185,17 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     );
   }
 }
+
+Future<(BitmapDescriptor, BitmapDescriptor)>? _pinCache;
+
+/// Pickup (green ↑) and drop (red ↓) pins, drawn once and shared by the searching map and the
+/// tracking map so both screens look the same.
+Future<(BitmapDescriptor, BitmapDescriptor)> routePinIcons() => _pinCache ??= () async {
+      final p = AppPalette.light;
+      final pick = await _pinBitmap(p.success, Icons.arrow_upward_rounded);
+      final drop = await _pinBitmap(p.danger, Icons.arrow_downward_rounded);
+      return (pick, drop);
+    }();
 
 /// Round pin with a white ring and an arrow, drawn once to a bitmap (pickup green ↑, drop red ↓).
 Future<BitmapDescriptor> _pinBitmap(Color color, IconData icon) async {

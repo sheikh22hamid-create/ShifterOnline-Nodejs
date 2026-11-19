@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, prefer_typing_uninitialized_variables
 
+import 'package:goParcel/screens/home/widgets/search_map.dart';
 import 'package:goParcel/screens/myorder/tracking_steps.dart';
 import 'package:goParcel/theme/app_tokens.dart';
 import 'package:goParcel/screens/myorder/tracking_rules.dart';
@@ -151,6 +152,9 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   final ValueNotifier<LatLng?> _driverMapPositionNotifier = ValueNotifier<LatLng?>(null);
   double _driverMapBearing = 0;
   BitmapDescriptor? _driverIcon;
+  // Same pickup/drop pins as the searching screen, so the hand-off looks like one screen.
+  BitmapDescriptor? _pickupPin;
+  BitmapDescriptor? _dropPin;
   String? _driverIconCategory;
   AnimationController? _driverAnimController;
   bool _mapFitted = false;
@@ -445,14 +449,16 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       markers.add(Marker(
         markerId: const MarkerId('pickup'),
         position: LatLng(pLat, pLng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        icon: _pickupPin ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        anchor: _pickupPin == null ? const Offset(0.5, 1) : const Offset(0.5, 0.92),
       ));
     }
     if (dLat != null && dLng != null) {
       markers.add(Marker(
         markerId: const MarkerId('drop'),
         position: LatLng(dLat, dLng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        icon: _dropPin ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        anchor: _dropPin == null ? const Offset(0.5, 1) : const Offset(0.5, 0.92),
       ));
     }
     final status = orderProduc?['Order_Status']?.toString().toLowerCase();
@@ -530,6 +536,13 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    routePinIcons().then((pins) {
+      if (!mounted) return;
+      setState(() {
+        _pickupPin = pins.$1;
+        _dropPin = pins.$2;
+      });
+    });
     NodeSocketManager.instance.connectionState.addListener(_refreshAfterReconnect);
     uid = widget.uid0 ?? getdata.read("Uid") ?? "";
     orderid = (getdata.read("OrderID") ?? "0").toString();
@@ -6206,7 +6219,8 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
       final p = AppPalette.current;
       content = LayoutBuilder(
         builder: (context, box) {
-          const initial = 0.56;
+          // Same sheet height as the searching screen (WaitingScreen), so the hand-off does not jump.
+          const initial = 0.5;
           return Stack(
             children: [
               Positioned.fill(

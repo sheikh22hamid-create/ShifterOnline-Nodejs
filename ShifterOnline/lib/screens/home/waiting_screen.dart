@@ -361,7 +361,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
       if (riderId > 0 || (flow != null && flow >= 1 && flow <= 3)) {
         _handedOffToTracking = true;
         clearPersistedWaitingOrder();
-        Get.off(() => TrackingWay(type: "Pickup", initialOrderData: order));
+        Get.off(() => TrackingWay(type: "Pickup", initialOrderData: order),
+            transition: Transition.fadeIn, duration: const Duration(milliseconds: 350));
       } else if (flow == 4) {
         clearPersistedWaitingOrder();
         final paid = g != null && g['state'] == 'paid' ? parseGuaranteeAmount(g['amount']) : 0.0;
@@ -419,7 +420,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
       // The assignment event is the first authoritative place where the
       // advance amount is available. Pass it forward so payment can render
       // immediately; TrackingWay still refreshes full details in parallel.
-      Get.off(() => TrackingWay(type: "Pickup", initialOrderData: data));
+      Get.off(() => TrackingWay(type: "Pickup", initialOrderData: data),
+          transition: Transition.fadeIn, duration: const Duration(milliseconds: 350));
     }, onNoDriverFound: (data) {
 
       if (_isDisposed) return;
@@ -597,43 +599,47 @@ class _WaitingScreenState extends State<WaitingScreen> {
           backgroundColor: p.canvas,
           body: Column(
             children: [
-              // Header, like Porter's trip screen: back · Order #id · Home.
-              Material(
-                color: p.surface,
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: _navigateBackToHome,
-                          tooltip: 'Back'.tr,
-                          icon: Icon(Icons.arrow_back_rounded, color: p.ink),
-                        ),
-                        Expanded(
-                          child: Text(
-                            '${'Order'.tr} #${widget.orderId}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppText.section(p.ink),
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: _navigateBackToHome,
-                          icon: Icon(Icons.home_outlined, size: 18, color: p.brandText),
-                          label: Text("Go to Home".tr, style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 14)),
-                          style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
-                        ),
-                      ],
+              // Header: same look as the tracking screen (TrackingWay._buildModernHeader), so the hand-off
+              // to tracking does not change the top of the screen.
+              Container(
+                padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + 6, left: 16, right: 16, bottom: 12),
+                decoration: BoxDecoration(color: p.surface, border: Border(bottom: BorderSide(color: p.divider))),
+                child: Row(
+                  children: [
+                    _RoundButton(
+                      label: 'Back'.tr,
+                      onTap: _navigateBackToHome,
+                      child: Icon(Icons.arrow_back_rounded, color: p.ink, size: 22),
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('${'Order'.tr} #${widget.orderId}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.section(p.ink).copyWith(fontSize: 19)),
+                          const SizedBox(height: 2),
+                          Text("Finding a driver for your order".tr,
+                              maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.caption(p.inkSubtle)),
+                        ],
+                      ),
+                    ),
+                    _RoundButton(
+                      label: "Go to Home".tr,
+                      onTap: _navigateBackToHome,
+                      child: Icon(Icons.home_outlined, color: p.ink, size: 21),
+                    ),
+                  ],
                 ),
               ),
               const SocketStatusBanner(),
               Expanded(
                 child: LayoutBuilder(builder: (context, box) {
-                  const sheetMin = 0.46;
+                  // Same height as the tracking screen's sheet.
+                  const sheetMin = 0.5;
                   return Stack(
                     children: [
                       // Map with the curved pickup → drop route; built once (RepaintBoundary keeps the
@@ -782,6 +788,34 @@ class _RiseInState extends State<_RiseIn> with SingleTickerProviderStateMixin {
         child: Transform.translate(offset: Offset(0, 24 * (1 - a.value)), child: child),
       ),
       child: widget.child,
+    );
+  }
+}
+
+/// 44 px round canvas button, as in the tracking screen header.
+class _RoundButton extends StatelessWidget {
+  const _RoundButton({required this.label, required this.onTap, required this.child});
+  final String label;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: AppPalette.current.canvas, shape: BoxShape.circle),
+          child: child,
+        ),
+      ),
     );
   }
 }
