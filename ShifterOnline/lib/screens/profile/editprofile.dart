@@ -78,7 +78,7 @@ class _EditProfileState extends State<EditProfile> {
   void _onSave() {
     if (!_changed) return;
     if ((RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(email.text))) {
-      imageupload(base64Image);
+      // saveProfile uploads the new photo itself once the details are saved (only when one was picked).
       saveProfile();
     } else {
       tostmsg("Please enter valid email address".tr);

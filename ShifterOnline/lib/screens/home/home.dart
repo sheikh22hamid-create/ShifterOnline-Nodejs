@@ -1248,6 +1248,8 @@ class _HomeState extends State<Home> {
       return;
     }
 
+    // Eligible just now: the check after the drop is chosen is skipped, so Home is not shown with a spinner.
+    _nextDayEligibleAt = DateTime.now();
     setState(() {
       _selectedBookingType = 3;
     });
@@ -1260,12 +1262,18 @@ class _HomeState extends State<Home> {
     }
   }
 
+  /// When the Low Fare (next-day) eligibility last passed on the tile tap. Select Vehicle checks it again itself.
+  DateTime? _nextDayEligibleAt;
+
+  bool get _nextDayCheckFresh =>
+      _nextDayEligibleAt != null && DateTime.now().difference(_nextDayEligibleAt!) < const Duration(minutes: 10);
+
   Future<void> _openVehicleSelection({Future<bool>? routeAllowed}) async {
     final pickup = _confirmedPickupData;
     final drop = _confirmedDropData;
     if (pickup == null || drop == null) return;
 
-    if (_selectedBookingType == 3) {
+    if (_selectedBookingType == 3 && !_nextDayCheckFresh) {
       Get.dialog(
         const Center(child: CircularProgressIndicator(color: Color(0xfff26522))),
         barrierDismissible: false,
