@@ -52,6 +52,10 @@ class SelectVehicleScreen extends StatefulWidget {
   final int bookingType;
   final String? availabilityError;
 
+  /// Service-area check started by Home while this screen opens. When it says the route is not served (Home has
+  /// already shown why), this screen closes so the customer can change the location.
+  final Future<bool>? routeAllowed;
+
   const SelectVehicleScreen({
     super.key,
     required this.pickup,
@@ -60,6 +64,7 @@ class SelectVehicleScreen extends StatefulWidget {
     this.stops = const [],
     this.bookingType = 1,
     this.availabilityError,
+    this.routeAllowed,
   });
 
   @override
@@ -172,6 +177,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final image = _text(category['cat_img'] ?? category['image']);
       if (id.isNotEmpty && image.isNotEmpty) _catalogImageByCategoryId[id] = image;
     }
+    widget.routeAllowed?.then((ok) {
+      if (!ok && mounted && (ModalRoute.of(context)?.isCurrent ?? false)) Navigator.of(context).maybePop();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRoute();
       _refreshAvailability();

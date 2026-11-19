@@ -233,23 +233,35 @@ class _HomeState extends State<Home> {
 
     if (!mounted || drop == null || _confirmedPickupData == null) return;
 
-    // Service area: the pickup and drop must both be inside a city's pickup service area (the vehicle-wise No Entry
-    // rules are checked once a vehicle is chosen). The customer stays here and can change the location.
-    if (!await _locationsServiceable(_confirmedPickupData!, drop)) return;
-
+    // Straight to Select Vehicle (Porter flow): Home is never shown in between. That screen loads vehicle
+    // availability itself. The service-area check (pickup and drop inside a city's pickup service area; the
+    // vehicle-wise No Entry rules are checked once a vehicle is chosen) runs at the same time: when the route is
+    // not served, its message shows and the customer is brought back here to change the location, as before.
     final pickup = _confirmedPickupData!;
+    final chosenDrop = Map<String, dynamic>.from(drop);
+    final routeAllowed = _locationsServiceable(pickup, chosenDrop).then((ok) {
+      if (!ok && mounted) {
+        setState(() {
+          if (identical(_confirmedDropData, chosenDrop)) {
+            _confirmedDropData = null;
+            _confirmedDropAddress = null;
+          }
+        });
+      }
+      return ok;
+    });
     setState(() {
       _pickupConfirmed = true;
-      _confirmedDropAddress = drop!["address"]?.toString();
-      _confirmedDropData = Map<String, dynamic>.from(drop);
+      _confirmedDropAddress = chosenDrop["address"]?.toString();
+      _confirmedDropData = chosenDrop;
       _isLoadingVehicleAvailability = true;
       _vehicleAvailabilityError = null;
       _vehicleAvailabilityById.clear();
     });
 
-    await _loadVehicleAvailability(pickup);
-    if (!mounted) return;
-    await _openVehicleSelection();
+    // Home's own availability (used if the customer comes back) loads in the background.
+    unawaited(_loadVehicleAvailability(pickup));
+    await _openVehicleSelection(routeAllowed: routeAllowed);
   }
 
   Future<void> _changePickupLocation() async {
@@ -1248,7 +1260,7 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _openVehicleSelection() async {
+  Future<void> _openVehicleSelection({Future<bool>? routeAllowed}) async {
     final pickup = _confirmedPickupData;
     final drop = _confirmedDropData;
     if (pickup == null || drop == null) return;
@@ -1283,6 +1295,7 @@ class _HomeState extends State<Home> {
           bookingType: _selectedBookingType,
           vehicles: options,
           availabilityError: _vehicleAvailabilityError,
+          routeAllowed: routeAllowed,
     ));
   }
 
