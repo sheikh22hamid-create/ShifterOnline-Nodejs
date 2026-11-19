@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, prefer_typing_uninitialized_variables
 
+import 'package:goParcel/screens/myorder/tracking_steps.dart';
 import 'package:goParcel/theme/app_tokens.dart';
 import 'package:goParcel/screens/myorder/tracking_rules.dart';
 import 'package:goParcel/screens/myorder/widgets/trip_complete_widgets.dart';
@@ -5265,7 +5266,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
     final h = _heroState();
     final status = (orderProduc?["Order_Status"] ?? "Processing").toString();
     final statusColor = _getStatusColor(status);
-    final stepIndex = status.toLowerCase().trim() == "completed" ? 5 : _getCurrentStepIndex(status);
+    final stepIndex = heroStepIndex(status, searching: h.searching);
 
     return Container(
       width: double.infinity,
