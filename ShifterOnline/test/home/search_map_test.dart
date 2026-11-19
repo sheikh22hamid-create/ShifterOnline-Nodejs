@@ -60,4 +60,14 @@ void main() {
   test('route pins are drawn once and shared (same future every call)', () {
     expect(identical(routePinIcons(), routePinIcons()), isTrue);
   });
+
+  test('a failed pin render is not cached forever: the next call retries', () async {
+    resetRoutePinCache();
+    pinRenderer = (c, i) async => throw StateError('toImage failed');
+    await expectLater(routePinIcons(), throwsStateError);
+    pinRenderer = (c, i) async => BitmapDescriptor.defaultMarker;
+    final pins = await routePinIcons();
+    expect(pins.$1, BitmapDescriptor.defaultMarker);
+    resetRoutePinCache();
+  });
 }

@@ -81,6 +81,7 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
   }
 
   void _rebuildArc() {
+    _draw.stop();
     final p = widget.pickup, d = widget.drop;
     _arc = p != null && d != null ? arcBetween(p, d) : const [];
     _shown = 0;
@@ -103,7 +104,13 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
   }
 
   Future<void> _loadIcons() async {
-    final (pick, drop) = await routePinIcons();
+    final (BitmapDescriptor, BitmapDescriptor) pins;
+    try {
+      pins = await routePinIcons();
+    } catch (_) {
+      return; // default markers stay; the next screen retries
+    }
+    final (pick, drop) = pins;
     if (!mounted) return;
     setState(() {
       _pickupIcon = pick;
@@ -116,7 +123,20 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     final p = widget.pickup, d = widget.drop;
     if (c == null || _fitted || p == null) return;
     _fitted = true;
-    if (d == null) {
+    try {
+      await _moveCamera(c, p, d);
+    } catch (_) {
+      // e.g. "map size can't be 0" before layout, or a controller from a map that left the tree.
+      _fitted = false;
+    } finally {
+      // The route draws even if the camera could not move.
+      if (mounted && draw) _startDraw();
+    }
+  }
+
+  Future<void> _moveCamera(GoogleMapController c, LatLng p, LatLng? d) async {
+    // Pickup and drop (almost) at the same spot: zoom to a sensible level instead of an empty box.
+    if (d == null || ((p.latitude - d.latitude).abs() < 0.002 && (p.longitude - d.longitude).abs() < 0.002)) {
       await c.animateCamera(CameraUpdate.newLatLngZoom(p, 15));
       return;
     }
@@ -130,7 +150,6 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     }
     await c.animateCamera(CameraUpdate.newLatLngBounds(
         LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)), 64));
-    if (mounted && draw) _startDraw();
   }
 
   /// Recenter button: frame pickup and drop again after the user panned away.
@@ -145,6 +164,8 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     final pickup = widget.pickup;
     if (pickup == null) {
       // Order details not loaded yet: a calm placeholder instead of a jumping map.
+      _controller = null;
+      _fitted = false;
       return ColoredBox(color: p.divider);
     }
     final markers = <Marker>{
@@ -217,13 +238,26 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
 
 Future<(BitmapDescriptor, BitmapDescriptor)>? _pinCache;
 
+/// Draws one pin; replaceable in tests.
+@visibleForTesting
+Future<BitmapDescriptor> Function(Color color, IconData icon) pinRenderer = _pinBitmap;
+
+@visibleForTesting
+void resetRoutePinCache() => _pinCache = null;
+
 /// Pickup (green ↑) and drop (red ↓) pins, drawn once and shared by the searching map and the
 /// tracking map so both screens look the same.
+/// A failed render is not kept: the cache is cleared so the next call tries again.
 Future<(BitmapDescriptor, BitmapDescriptor)> routePinIcons() => _pinCache ??= () async {
-      final p = AppPalette.light;
-      final pick = await _pinBitmap(p.success, Icons.arrow_upward_rounded);
-      final drop = await _pinBitmap(p.danger, Icons.arrow_downward_rounded);
-      return (pick, drop);
+      try {
+        final p = AppPalette.light;
+        final pick = await pinRenderer(p.success, Icons.arrow_upward_rounded);
+        final drop = await pinRenderer(p.danger, Icons.arrow_downward_rounded);
+        return (pick, drop);
+      } catch (_) {
+        _pinCache = null;
+        rethrow;
+      }
     }();
 
 /// Round pin with a white ring and an arrow, drawn once to a bitmap (pickup green ↑, drop red ↓).

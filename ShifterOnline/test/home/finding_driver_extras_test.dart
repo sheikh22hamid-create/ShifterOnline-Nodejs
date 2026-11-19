@@ -46,4 +46,27 @@ void main() {
     expect(find.text('Total fare'), findsNothing);
     expect(find.text('Need help?'), findsOneWidget);
   });
+
+  testWidgets('while the overlay shows, taps do not reach the screen below (no blind Back)', (t) async {
+    var taps = 0;
+    await t.pumpWidget(_app(Stack(children: [
+      Positioned.fill(child: TextButton(onPressed: () => taps++, child: const Text('Back'))),
+      const Positioned.fill(child: BookingConfirmedOverlay()),
+    ])));
+    await t.pump(const Duration(milliseconds: 300));
+    await t.tapAt(t.getCenter(find.byType(TextButton)));
+    expect(taps, 0);
+    await t.pump(const Duration(seconds: 3));
+    await t.tap(find.text('Back'));
+    expect(taps, 1);
+  });
+
+  testWidgets('pinned cancel bar: always shown, calls back, spinner while cancelling', (t) async {
+    var n = 0;
+    await t.pumpWidget(_app(Align(alignment: Alignment.bottomCenter, child: CancelBookingBar(cancelling: false, onCancel: () => n++))));
+    await t.tap(find.text('Cancel booking'));
+    expect(n, 1);
+    await t.pumpWidget(_app(Align(alignment: Alignment.bottomCenter, child: CancelBookingBar(cancelling: true, onCancel: () => n++))));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
 }

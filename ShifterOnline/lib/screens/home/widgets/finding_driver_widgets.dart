@@ -135,33 +135,11 @@ class _SearchingCardState extends State<SearchingCard>
               decoration: BoxDecoration(color: p.brandTint, shape: BoxShape.circle),
               child: AnimatedBuilder(
                 animation: _scan,
-                builder: (_, child) {
+                builder: (_, __) {
                   final a = _scan.value * 2 * math.pi;
                   final o = still ? Offset.zero : Offset(math.cos(a) * 5, math.sin(a) * 5);
-                  return Transform.translate(offset: o, child: child);
+                  return Transform.translate(offset: o, child: _lens(p, showMap: still || _scan.value < .5));
                 },
-                // Lens showing the map, then a driver inside it ("we are looking for your driver").
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: Stack(
-                    children: [
-                      Icon(Icons.search_rounded, size: 40, color: p.brandText),
-                      Align(
-                        alignment: const Alignment(-0.2, -0.22),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: Icon(
-                            still || _scan.value < .5 ? Icons.map_rounded : Icons.person_rounded,
-                            key: ValueKey(still || _scan.value < .5),
-                            size: 13,
-                            color: p.brandText,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
           ),
@@ -190,6 +168,29 @@ class _SearchingCardState extends State<SearchingCard>
       ),
     );
   }
+
+  /// Lens showing the map, then a driver inside it ("we are looking for your driver").
+  Widget _lens(AppPalette p, {required bool showMap}) => SizedBox(
+        width: 40,
+        height: 40,
+        child: Stack(
+          children: [
+            Icon(Icons.search_rounded, size: 40, color: p.brandText),
+            Align(
+              alignment: const Alignment(-0.2, -0.22),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Icon(
+                  showMap ? Icons.map_rounded : Icons.person_rounded,
+                  key: ValueKey(showMap),
+                  size: 13,
+                  color: p.brandText,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _segment(AppPalette p, int i, double fill, {required bool shimmer}) {
     return ClipRRect(
@@ -301,7 +302,8 @@ class WaitingTripCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 /// Full-screen moment after booking: a green tick pops in with confetti, then the overlay fades away
-/// by itself. It ignores taps, so it never blocks the screen below. No saving is claimed here.
+/// by itself (under 2 s). While visible it absorbs taps so nothing hidden behind it is pressed by mistake.
+/// No saving is claimed here.
 class BookingConfirmedOverlay extends StatefulWidget {
   const BookingConfirmedOverlay({super.key});
 
@@ -337,7 +339,8 @@ class _BookingConfirmedOverlayState extends State<BookingConfirmedOverlay> with 
     if (_gone) return const SizedBox.shrink();
     final p = AppPalette.current;
     final still = _reduceMotion(context);
-    return IgnorePointer(
+    // Absorbs taps while visible, so a tap cannot hit the hidden header (e.g. Back) behind it.
+    return AbsorbPointer(
       child: AnimatedBuilder(
         animation: _c,
         builder: (_, __) {
@@ -500,6 +503,40 @@ class WaitingFareCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pinned cancel
+// ---------------------------------------------------------------------------
+
+/// "Cancel booking", pinned under the sheet so it is always visible (spec: never hide Cancel), but quiet.
+class CancelBookingBar extends StatelessWidget {
+  const CancelBookingBar({super.key, required this.cancelling, required this.onCancel});
+  final bool cancelling;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.current;
+    return Material(
+      color: p.surface,
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          child: Center(
+            child: TextButton(
+              onPressed: cancelling ? null : onCancel,
+              style: TextButton.styleFrom(minimumSize: const Size(160, 48), foregroundColor: p.danger),
+              child: cancelling
+                  ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: p.inkMuted, strokeWidth: 2))
+                  : Text('Cancel booking'.tr, style: AppText.body(p.danger).copyWith(fontSize: 14)),
+            ),
+          ),
+        ),
       ),
     );
   }

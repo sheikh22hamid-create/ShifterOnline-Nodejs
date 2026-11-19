@@ -542,7 +542,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         _pickupPin = pins.$1;
         _dropPin = pins.$2;
       });
-    });
+    }, onError: (_) {}); // default markers stay
     NodeSocketManager.instance.connectionState.addListener(_refreshAfterReconnect);
     uid = widget.uid0 ?? getdata.read("Uid") ?? "";
     orderid = (getdata.read("OrderID") ?? "0").toString();

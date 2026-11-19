@@ -751,23 +751,6 @@ class _WaitingScreenState extends State<WaitingScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Center(
-                                child: TextButton(
-                                  onPressed: _isCancelling ? null : _showCancelDialog,
-                                  style: TextButton.styleFrom(minimumSize: const Size(120, 44), foregroundColor: p.inkMuted),
-                                  child: _isCancelling
-                                      ? SizedBox(
-                                          height: 18,
-                                          width: 18,
-                                          child: CircularProgressIndicator(color: p.inkMuted, strokeWidth: 2),
-                                        )
-                                      : Text(
-                                          "Cancel booking".tr,
-                                          style: AppText.body(p.danger).copyWith(fontSize: 14),
-                                        ),
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -776,6 +759,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
                   );
                 }),
               ),
+              // Always visible, never inside the sheet (spec: Cancel is never hidden).
+              CancelBookingBar(cancelling: _isCancelling, onCancel: _showCancelDialog),
             ],
           ),
               ),
