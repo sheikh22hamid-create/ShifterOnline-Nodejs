@@ -111,8 +111,12 @@ class HomeHeader extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: AppSpace.m),
-                  const V2Art(asset: 'assets/v2/home_header.png', placeholderLabel: 'H1', width: 120, height: 86),
+                  const SizedBox(width: AppSpace.s),
+                  // Bigger art that runs to the screen's right edge (the shop is cut there on purpose).
+                  Transform.translate(
+                    offset: const Offset(20, 0),
+                    child: const V2Art(asset: 'assets/v2/home_header.png', placeholderLabel: 'H1', width: 150, height: 124),
+                  ),
                 ],
               ),
             ],
