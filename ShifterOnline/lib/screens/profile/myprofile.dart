@@ -2,6 +2,7 @@
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -217,158 +218,187 @@ class _MyProfileState extends State<MyProfile> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── 1. Vibrant Orange Header Section ─────────────────────────────
-              _buildOrangeHeader(
-                name: name,
-                ccode: ccode,
-                mobile: mobile,
-                rImg: rImg,
-                tagline: tagline,
-                hasUnreadNotif: hasUnreadNotif,
-              ),
+              // ── 1. Orange band (same look as Home) ─────────────────────────────
+              _buildOrangeHeader(hasUnreadNotif: hasUnreadNotif),
 
-              const SizedBox(height: 18),
+              // Everything below overlaps the band a little, like Home's pickup card.
+              Transform.translate(
+                offset: const Offset(0, -_overlap),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ── 2. Identity + profile completion ──────────────────────
+                      _buildIdentityCard(
+                        name: name,
+                        ccode: ccode,
+                        mobile: mobile,
+                        rImg: rImg,
+                        tagline: tagline,
+                        completionTitle: completionTitle,
+                        completionPrompt: completionPrompt,
+                        completionPercent: completionPercent,
+                      ),
+                      const SizedBox(height: 14),
 
-              // ── 2. Complete Your Profile Card ────────────────────────────────
-              _buildCompleteProfileCard(
-                title: completionTitle,
-                prompt: completionPrompt,
-                percentage: completionPercent,
-              ),
+                      // ── 3. Quick actions (Porter-style tiles) ─────────────────
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _quickTile(
+                              icon: Icons.location_on_rounded,
+                              label: 'Saved Addresses'.tr,
+                              color: p.brandText,
+                              tint: p.brandTint,
+                              onTap: () => Get.to(() => const AddressListPage()),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _quickTile(
+                              icon: Icons.card_giftcard_rounded,
+                              label: 'Refer & Earn'.tr,
+                              color: p.successText,
+                              tint: p.successTint,
+                              onTap: referAndEarn,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _quickTile(
+                              icon: Icons.headset_mic_rounded,
+                              label: 'Help'.tr,
+                              color: p.warning,
+                              tint: p.warningTint,
+                              onTap: _callCustomerCare,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
 
-              const SizedBox(height: 18),
+                      // ── 4. Grouped rows (every row = an existing screen / handler) ──
+                      AppGroupCard(title: 'Benefits'.tr, children: [
+                        AppMenuRow(
+                          icon: Icons.workspace_premium_rounded,
+                          title: (premiumData["title"]?.toString() ?? "Shifter Premium").tr,
+                          subtitle: (premiumData["subtitle"]?.toString() ??
+                                  "Save more on every booking\nFaster • Better • More rewards")
+                              .replaceAll('\n', ' · '),
+                          onTap: () => Get.to(() => const PremiumPlansScreen()),
+                        ),
+                        AppMenuRow(
+                          icon: Icons.toll_outlined,
+                          title: 'Reward Points'.tr,
+                          subtitle: 'Your points and how to use them'.tr,
+                          onTap: () => Get.to(() => const ReferralPointsScreen()),
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
+                      AppGroupCard(title: 'Refer'.tr, children: [
+                        AppMenuRow(
+                          icon: Icons.business_center_outlined,
+                          title: 'Refer business leads'.tr,
+                          subtitle: 'Know a business that ships? Earn for every lead'.tr,
+                          onTap: () => Get.to(() => const LeadReferralScreen()),
+                        ),
+                        AppMenuRow(
+                          icon: Icons.share_rounded,
+                          title: 'Share Shifter Online'.tr,
+                          subtitle: 'Help us grow, share with your friends'.tr,
+                          onTap: share,
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
+                      AppGroupCard(title: 'Drivers'.tr, children: [
+                        AppMenuRow(
+                          icon: Icons.favorite_rounded,
+                          title: (favDriversData["title"]?.toString() ?? "Favorite Drivers").tr,
+                          subtitle: (favDriversData["subtitle"]?.toString() ?? "Quickly book your preferred drivers")
+                              .replaceAll('\n', ' '),
+                          onTap: () => Get.to(() => const FavoriteDriversScreen()),
+                        ),
+                        AppMenuRow(
+                          icon: Icons.block_rounded,
+                          title: 'Blocked Drivers'.tr,
+                          subtitle: 'Drivers you blocked. Unblock them anytime'.tr,
+                          onTap: () => Get.to(() => const BlockedDriversScreen()),
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
+                      AppGroupCard(title: 'Preferences'.tr, children: [
+                        AppMenuRow(
+                          icon: Icons.translate_rounded,
+                          title: 'Language'.tr,
+                          onTap: () => Get.to(() => const LanguageScreen()),
+                        ),
+                        AppMenuRow(
+                          icon: notifier.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                          title: 'Dark Mode'.tr,
+                          trailing: Switch(value: notifier.isDark, activeColor: p.brand, onChanged: _setDarkMode),
+                          onTap: () => _setDarkMode(!notifier.isDark),
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
+                      AppGroupCard(title: 'Help & Support'.tr, children: [
+                        AppMenuRow(
+                          icon: Icons.headset_mic_rounded,
+                          title: 'Customer Care'.tr,
+                          subtitle: "Call $customerCareNumber • $customerCareHours",
+                          onTap: () => _callCustomerCare(),
+                        ),
+                        AppMenuRow(
+                          icon: Icons.question_mark_rounded,
+                          title: 'FAQ'.tr,
+                          subtitle: 'Find answers to common questions'.tr,
+                          onTap: () => Get.to(() => Faq()),
+                        ),
+                        AppMenuRow(
+                          icon: Icons.verified_user_rounded,
+                          title: 'Privacy Policy'.tr,
+                          subtitle: 'How we protect your data'.tr,
+                          onTap: () => _openLegalPage("Privacy Policy"),
+                        ),
+                        AppMenuRow(
+                          icon: Icons.description_rounded,
+                          title: 'Terms of Use'.tr,
+                          subtitle: 'Rules and guidelines for using Shifter Online'.tr,
+                          onTap: () => _openLegalPage("Terms of Use"),
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
 
-              // ── 3. Porter-style grouped cards (every row = an existing screen / handler) ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AppGroupCard(children: [
-                      AppMenuRow(
-                        icon: Icons.location_on_outlined,
-                        title: 'Saved Addresses'.tr,
-                        subtitle: 'Home, work and other places'.tr,
-                        onTap: () => Get.to(() => const AddressListPage()),
+                      // ── 5. Account actions ───────────────────────────────────
+                      AppGroupCard(children: [
+                        AppMenuRow(
+                          icon: Icons.logout_rounded,
+                          title: 'Log out'.tr,
+                          subtitle: "You'll need to verify your phone again to sign in".tr,
+                          onTap: _handleLogout,
+                        ),
+                        AppMenuRow(
+                          icon: Icons.delete_outline_rounded,
+                          title: 'Delete Account'.tr,
+                          danger: true,
+                          onTap: _askDeleteAccount,
+                        ),
+                      ]),
+                      const SizedBox(height: 20),
+                      Center(
+                        child: Column(
+                          children: [
+                            Text('Shifter Online', style: AppText.bodyStrong(p.inkSubtle).copyWith(fontSize: 13)),
+                            const SizedBox(height: 2),
+                            Text("${'Version'.tr} ${appVersion ?? '1.0.0'}", style: AppText.caption(p.inkSubtle)),
+                          ],
+                        ),
                       ),
-                    ]),
-                    const SizedBox(height: 14),
-                    AppGroupCard(title: 'Benefits'.tr, children: [
-                      AppMenuRow(
-                        icon: Icons.workspace_premium_rounded,
-                        title: (premiumData["title"]?.toString() ?? "Shifter Premium").tr,
-                        subtitle: (premiumData["subtitle"]?.toString() ??
-                                "Save more on every booking\nFaster • Better • More rewards")
-                            .replaceAll('\n', ' · '),
-                        onTap: () => Get.to(() => const PremiumPlansScreen()),
-                      ),
-                      AppMenuRow(
-                        icon: Icons.toll_outlined,
-                        title: 'Reward Points'.tr,
-                        subtitle: 'Your points and how to use them'.tr,
-                        onTap: () => Get.to(() => const ReferralPointsScreen()),
-                      ),
-                    ]),
-                    const SizedBox(height: 14),
-                    AppGroupCard(title: 'Refer'.tr, children: [
-                      AppMenuRow(
-                        icon: Icons.card_giftcard_rounded,
-                        title: 'Refer & Earn'.tr,
-                        subtitle: 'Invite friends and earn exciting rewards'.tr,
-                        onTap: referAndEarn,
-                      ),
-                      AppMenuRow(
-                        icon: Icons.business_center_outlined,
-                        title: 'Refer business leads'.tr,
-                        onTap: () => Get.to(() => const LeadReferralScreen()),
-                      ),
-                      AppMenuRow(
-                        icon: Icons.share_rounded,
-                        title: 'Share Shifter Online'.tr,
-                        subtitle: 'Help us grow, share with your friends'.tr,
-                        onTap: share,
-                      ),
-                    ]),
-                    const SizedBox(height: 14),
-                    AppGroupCard(title: 'Drivers'.tr, children: [
-                      AppMenuRow(
-                        icon: Icons.favorite_rounded,
-                        title: (favDriversData["title"]?.toString() ?? "Favorite Drivers").tr,
-                        subtitle: (favDriversData["subtitle"]?.toString() ?? "Quickly book your preferred drivers")
-                            .replaceAll('\n', ' '),
-                        onTap: () => Get.to(() => const FavoriteDriversScreen()),
-                      ),
-                      AppMenuRow(
-                        icon: Icons.block_rounded,
-                        title: 'Blocked Drivers'.tr,
-                        subtitle: 'Drivers you blocked. Unblock them anytime'.tr,
-                        onTap: () => Get.to(() => const BlockedDriversScreen()),
-                      ),
-                    ]),
-                    const SizedBox(height: 14),
-                    AppGroupCard(title: 'Preferences'.tr, children: [
-                      AppMenuRow(
-                        icon: Icons.translate_rounded,
-                        title: 'Language'.tr,
-                        onTap: () => Get.to(() => const LanguageScreen()),
-                      ),
-                      AppMenuRow(
-                        icon: notifier.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                        title: 'Dark Mode'.tr,
-                        trailing: Switch(value: notifier.isDark, activeColor: p.brand, onChanged: _setDarkMode),
-                        onTap: () => _setDarkMode(!notifier.isDark),
-                      ),
-                    ]),
-                    const SizedBox(height: 14),
-                    AppGroupCard(title: 'Help & Support'.tr, children: [
-                      AppMenuRow(
-                        icon: Icons.headset_mic_rounded,
-                        title: 'Customer Care'.tr,
-                        subtitle: "Call $customerCareNumber • $customerCareHours",
-                        onTap: () => _callCustomerCare(),
-                      ),
-                      AppMenuRow(
-                        icon: Icons.question_mark_rounded,
-                        title: 'FAQ'.tr,
-                        subtitle: 'Find answers to common questions'.tr,
-                        onTap: () => Get.to(() => Faq()),
-                      ),
-                      AppMenuRow(
-                        icon: Icons.verified_user_rounded,
-                        title: 'Privacy Policy'.tr,
-                        subtitle: 'How we protect your data'.tr,
-                        onTap: () => _openLegalPage("Privacy Policy"),
-                      ),
-                      AppMenuRow(
-                        icon: Icons.description_rounded,
-                        title: 'Terms of Use'.tr,
-                        subtitle: 'Rules and guidelines for using Shifter Online'.tr,
-                        onTap: () => _openLegalPage("Terms of Use"),
-                      ),
-                    ]),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              // ── 6. Log Out Card ──────────────────────────────────────────────
-              _buildLogoutCard(),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: AppGroupCard(children: [
-                  AppMenuRow(
-                    icon: Icons.delete_outline_rounded,
-                    title: 'Delete Account'.tr,
-                    danger: true,
-                    onTap: _askDeleteAccount,
-                  ),
-                ]),
-              ),
-              const SizedBox(height: 14),
-              Center(
-                child: Text("Version ${appVersion ?? '1.0.0'}", style: AppText.caption(p.inkSubtle)),
-              ),
-              const SizedBox(height: 10),
             ],
           ),
         ),
@@ -379,40 +409,25 @@ class _MyProfileState extends State<MyProfile> {
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. Orange Header
   // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildOrangeHeader({
-    required String name,
-    required String ccode,
-    required String mobile,
-    required String rImg,
-    required String tagline,
-    required bool hasUnreadNotif,
-  }) {
-    final p = AppPalette.light;
-    final initials = name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((w) => w.isNotEmpty)
-        .take(2)
-        .map((w) => w[0].toUpperCase())
-        .join();
-    Widget initialsAvatar() => Container(
-          color: p.brand,
-          alignment: Alignment.center,
-          child: Text(initials.isEmpty ? 'S' : initials,
-              style: AppText.title(p.onBrand).copyWith(fontSize: 28)),
-        );
+  /// How far the cards below overlap the orange band.
+  static const double _overlap = 44;
 
-    Widget roundIconButton({required IconData icon, required VoidCallback onTap, bool dot = false}) {
-      return GestureDetector(
+  /// Text under the title on the orange band (same dark brown as Home's header).
+  static const Color _onBandSub = Color(0xFF3A1A0B);
+
+  Widget _bandButton({required IconData icon, required String label, required VoidCallback onTap, bool dot = false}) {
+    final p = AppPalette.light;
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: InkResponse(
         onTap: onTap,
+        radius: 24,
         child: Container(
           width: 44,
           height: 44,
-          decoration: BoxDecoration(
-            color: p.surface,
-            shape: BoxShape.circle,
-            border: Border.all(color: p.brand.withValues(alpha: 0.25)),
-          ),
+          decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle, boxShadow: AppShadow.card),
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -425,7 +440,7 @@ class _MyProfileState extends State<MyProfile> {
                     width: 9,
                     height: 9,
                     decoration: BoxDecoration(
-                      color: p.brand,
+                      color: p.danger,
                       shape: BoxShape.circle,
                       border: Border.all(color: p.surface, width: 1.5),
                     ),
@@ -434,168 +449,230 @@ class _MyProfileState extends State<MyProfile> {
             ],
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    Future<void> openEditProfile() async {
-      await Get.to(() => const EditProfile());
-      fetchProfileOverview();
-    }
+  Widget _buildOrangeHeader({required bool hasUnreadNotif}) {
+    final p = AppPalette.current;
+    final top = MediaQuery.paddingOf(context).top;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: p.brand,
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(20, top + 14, 20, _overlap + 22),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Account".tr, style: AppText.title(p.onBrand).copyWith(fontSize: 27, letterSpacing: -0.4)),
+                  const SizedBox(height: 2),
+                  Text(
+                    "Manage your account and preferences".tr,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.body(_onBandSub).copyWith(fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            _bandButton(icon: Icons.settings_outlined, label: 'Settings'.tr, onTap: _showSettingsBottomSheet),
+            const SizedBox(width: 10),
+            _bandButton(
+              icon: Icons.notifications_none_rounded,
+              label: 'Notifications'.tr,
+              dot: hasUnreadNotif,
+              onTap: () => Get.to(() => const Notifications()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openEditProfile() async {
+    await Get.to(() => const EditProfile());
+    fetchProfileOverview();
+  }
+
+  Widget _buildIdentityCard({
+    required String name,
+    required String ccode,
+    required String mobile,
+    required String rImg,
+    required String tagline,
+    required String completionTitle,
+    required String completionPrompt,
+    required int completionPercent,
+  }) {
+    final p = AppPalette.current;
+    final initials = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0].toUpperCase())
+        .join();
+    Widget initialsAvatar() => Container(
+          color: p.brandTint,
+          alignment: Alignment.center,
+          child: Text(initials.isEmpty ? 'S' : initials, style: AppText.title(p.brandText).copyWith(fontSize: 24)),
+        );
+    // The server's default line is not worth the space; a custom tagline still shows.
+    final showTagline = tagline.trim().isNotEmpty && !tagline.startsWith("Let's move a smarter");
 
     return Container(
-      width: double.infinity,
-      color: p.brandTint,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top bar: title + actions
-              Row(
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: AppShadow.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: _openEditProfile,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.card)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
+              child: Row(
                 children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        height: 64,
+                        width: 64,
+                        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: p.brandTint, width: 3)),
+                        child: ClipOval(
+                          child: Config.isValidImageUrl(rImg)
+                              ? Image.network(
+                                  Config.resolveImageUrl(rImg),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => initialsAvatar(),
+                                )
+                              : initialsAvatar(),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -2,
+                        right: -2,
+                        child: Container(
+                          height: 24,
+                          width: 24,
+                          decoration: BoxDecoration(
+                            color: p.brand,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: p.surface, width: 2),
+                          ),
+                          child: Icon(Icons.camera_alt_rounded, color: p.onBrand, size: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("My Profile".tr, style: AppText.title(p.ink).copyWith(fontSize: 24)),
-                        const SizedBox(height: 2),
-                        Text(
-                          "Manage your account and preferences".tr,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.caption(p.inkMuted),
+                        Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.title(p.ink).copyWith(fontSize: 20)),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text("$ccode $mobile",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.body(p.inkMuted).copyWith(fontSize: 14)),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(Icons.verified_rounded, color: p.success, size: 16),
+                          ],
                         ),
+                        if (showTagline) ...[
+                          const SizedBox(height: 4),
+                          Text(tagline,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.caption(p.inkSubtle).copyWith(height: 1.3)),
+                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  roundIconButton(icon: Icons.settings_outlined, onTap: _showSettingsBottomSheet),
-                  const SizedBox(width: 10),
-                  roundIconButton(
-                    icon: Icons.notifications_outlined,
-                    dot: hasUnreadNotif,
-                    onTap: () => Get.to(() => const Notifications()),
+                  const SizedBox(width: 8),
+                  Semantics(
+                    button: true,
+                    label: 'Edit Profile'.tr,
+                    excludeSemantics: true,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: p.canvas, shape: BoxShape.circle),
+                      child: Icon(Icons.edit_outlined, color: p.ink, size: 19),
+                    ),
                   ),
                 ],
               ),
+            ),
+          ),
+          if (completionPercent < 100) ...[
+            Divider(height: 1, color: p.divider),
+            _buildCompleteProfileCard(
+              title: completionTitle,
+              prompt: completionPrompt,
+              percentage: completionPercent,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
-              const SizedBox(height: 20),
-
-              // Identity: avatar + name / phone / verified
+  /// Porter-style quick action: tinted round icon over a short label.
+  Widget _quickTile({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color tint,
+    required VoidCallback onTap,
+  }) {
+    final p = AppPalette.current;
+    return Material(
+      color: p.surface,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      elevation: 0,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 96),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(AppRadius.card), boxShadow: AppShadow.card, color: p.surface),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
               Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: p.surface,
-                  borderRadius: BorderRadius.circular(AppRadius.hero),
-                  border: Border.all(color: p.line),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        GestureDetector(
-                          onTap: openEditProfile,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              SizedBox(
-                                height: 72,
-                                width: 72,
-                                child: ClipOval(
-                                  child: Config.isValidImageUrl(rImg)
-                                      ? Image.network(
-                                          Config.resolveImageUrl(rImg),
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => initialsAvatar(),
-                                        )
-                                      : initialsAvatar(),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: -2,
-                                right: -2,
-                                child: Container(
-                                  height: 26,
-                                  width: 26,
-                                  decoration: BoxDecoration(
-                                    color: p.ink,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: p.surface, width: 2),
-                                  ),
-                                  child: Icon(Icons.camera_alt_rounded, color: p.surface, size: 12),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Flexible(
-                                    child: Text(
-                                      name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppText.title(p.ink).copyWith(fontSize: 20),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Icon(Icons.verified_rounded, color: p.success, size: 18),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              Text("$ccode $mobile", style: AppText.bodyStrong(p.inkMuted).copyWith(fontSize: 14)),
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(color: p.successTint, borderRadius: BorderRadius.circular(8)),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.check_circle_rounded, color: p.successText, size: 13),
-                                    const SizedBox(width: 4),
-                                    Text("Phone Verified".tr,
-                                        style: AppText.caption(p.successText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (tagline.trim().isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(
-                          tagline,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppText.caption(p.inkMuted).copyWith(fontSize: 12.5, height: 1.35),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: OutlinedButton.icon(
-                        onPressed: openEditProfile,
-                        icon: const Icon(Icons.edit_outlined, size: 17),
-                        label: Text("Edit Profile".tr),
-                      ),
-                    ),
-                  ],
-                ),
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+                child: Icon(icon, color: color, size: 22),
               ),
+              const SizedBox(height: 8),
+              Text(label,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.bodyStrong(p.ink).copyWith(fontSize: 13, height: 1.2)),
             ],
           ),
         ),
@@ -614,110 +691,54 @@ class _MyProfileState extends State<MyProfile> {
     required String prompt,
     required int percentage,
   }) {
-    final double normalizedValue = (percentage / 100.0).clamp(0.0, 1.0);
-    final bool isComplete = percentage >= 100;
-    final Color accentColor = isComplete ? const Color(0xFF10B981) : const Color(0xFFFA4500);
-    final Color trackColor = isComplete ? const Color(0xFFD1FAE5) : const Color(0xFFFFE4D6);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFF1F5F9)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () async {
-            final missing = (overviewData?["profile_completion"]?["missing_fields"] as List?) ?? [];
-            if (missing.length == 1 && missing.contains("saved_address")) {
-              await Get.to(() => const AddressListPage());
-            } else {
-              await Get.to(() => const EditProfile());
-            }
-            fetchProfileOverview();
-          },
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(15),
-            child: Row(
-              children: [
-                // Circular progress with the percentage inside
-                SizedBox(
-                  width: 54,
-                  height: 54,
-                  child: Stack(
-                    alignment: Alignment.center,
+    final p = AppPalette.current;
+    final double value = (percentage / 100.0).clamp(0.0, 1.0);
+    return InkWell(
+      onTap: () async {
+        final missing = (overviewData?["profile_completion"]?["missing_fields"] as List?) ?? [];
+        if (missing.length == 1 && missing.contains("saved_address")) {
+          await Get.to(() => const AddressListPage());
+        } else {
+          await Get.to(() => const EditProfile());
+        }
+        fetchProfileOverview();
+      },
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppRadius.card)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      SizedBox(
-                        width: 54,
-                        height: 54,
-                        child: CircularProgressIndicator(
-                          value: normalizedValue,
-                          strokeWidth: 5,
-                          backgroundColor: trackColor,
-                          valueColor: AlwaysStoppedAnimation<Color>(accentColor),
-                        ),
-                      ),
-                      Text(
-                        "$percentage%",
-                        style: TextStyle(
-                          fontFamily: 'Gilroy_Bold',
-                          fontSize: 12.5,
-                          color: accentColor,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      Expanded(child: Text(title.tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14))),
+                      Text('$percentage%', style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 14)),
                     ],
                   ),
-                ),
-                const SizedBox(width: 14),
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title.tr,
-                        style: AppText.bodyStrong(AppPalette.light.ink).copyWith(fontSize: 14.5),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        prompt.tr,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: Color(0xFF64748B),
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: value,
+                      minHeight: 6,
+                      backgroundColor: p.brandTint,
+                      valueColor: AlwaysStoppedAnimation<Color>(p.brand),
+                    ),
                   ),
-                ),
-
-                const SizedBox(width: 6),
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: accentColor.withOpacity(0.10),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.chevron_right_rounded, color: accentColor, size: 20),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(prompt.tr,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption(p.inkMuted).copyWith(fontSize: 12.5, height: 1.3)),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right_rounded, color: p.inkSubtle, size: 22),
+          ],
         ),
       ),
     );
@@ -837,81 +858,6 @@ class _MyProfileState extends State<MyProfile> {
         ),
       ),
       isScrollControlled: true,
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────────
-  // 6. Log Out Card
-  // ─────────────────────────────────────────────────────────────────────────────
-  Widget _buildLogoutCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFEE2E2), width: 1.2),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _handleLogout,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFE4E6),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: Color(0xFFEF4444),
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 14),
-
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Log out".tr,
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Bold',
-                          fontSize: 15,
-                          color: Color(0xFFDC2626),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        "You'll need to verify your phone again to sign in".tr,
-                        style: const TextStyle(
-                          fontFamily: 'Gilroy_Medium',
-                          fontSize: 11.5,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(width: 6),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Color(0xFFFCA5A5),
-                  size: 22,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
