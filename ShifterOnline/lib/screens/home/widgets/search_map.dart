@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../theme/app_tokens.dart';
+import '../../../theme/map_style.dart';
 
 /// Points on a gentle curve from [a] to [b] (quadratic Bézier, bowed to one side), like Porter's
 /// "searching" route. Drawn on the client, so it needs no Directions API call.
@@ -32,13 +34,43 @@ List<LatLng> arcBetween(LatLng a, LatLng b, {int segments = 48, double bend = 0.
   ];
 }
 
+/// One curve per leg: pickup → each stop → drop (consecutive legs share their joining point once).
+List<LatLng> routeArc(LatLng a, List<LatLng> stops, LatLng b) {
+  final pts = [a, ...stops, b];
+  final out = <LatLng>[];
+  for (var i = 0; i + 1 < pts.length; i++) {
+    final leg = arcBetween(pts[i], pts[i + 1]);
+    out.addAll(out.isEmpty ? leg : leg.skip(1));
+  }
+  return out;
+}
+
+/// Stop points from the order's `stops` list ([{lat, lng, sequence…}]); entries without numbers are skipped.
+List<LatLng> parseStopPoints(Object? raw) {
+  if (raw is! List) return const [];
+  final out = <LatLng>[];
+  for (final s in raw) {
+    if (s is! Map) continue;
+    final lat = double.tryParse('${s['lat'] ?? ''}'), lng = double.tryParse('${s['lng'] ?? ''}');
+    if (lat != null && lng != null) out.add(LatLng(lat, lng));
+  }
+  return out;
+}
+
+/// Pin tip as a fraction of the pin bitmap's height (tip drawn at h - 4 of 92 px).
+const double kRoutePinAnchorY = 88 / 92;
+
 /// Map behind the "Finding your driver" sheet: pickup and drop pins and a curved route that draws in once.
 /// Built once; later rebuilds of the parent with the same points change nothing on the map.
 class SearchRouteMap extends StatefulWidget {
-  const SearchRouteMap({super.key, required this.pickup, required this.drop, this.bottomPadding = 0});
+  const SearchRouteMap(
+      {super.key, required this.pickup, required this.drop, this.stops = const [], this.bottomPadding = 0});
 
   final LatLng? pickup;
   final LatLng? drop;
+
+  /// Stops between pickup and drop, in order (numbered pins; the route passes through them).
+  final List<LatLng> stops;
 
   /// Height of the sheet covering the bottom of the map, so the route is framed above it.
   final double bottomPadding;
@@ -67,7 +99,7 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
   @override
   void didUpdateWidget(SearchRouteMap old) {
     super.didUpdateWidget(old);
-    if (old.pickup != widget.pickup || old.drop != widget.drop) {
+    if (old.pickup != widget.pickup || old.drop != widget.drop || !listEquals(old.stops, widget.stops)) {
       _fitted = false;
       _rebuildArc();
       _fit();
@@ -83,7 +115,7 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
   void _rebuildArc() {
     _draw.stop();
     final p = widget.pickup, d = widget.drop;
-    _arc = p != null && d != null ? arcBetween(p, d) : const [];
+    _arc = p != null && d != null ? routeArc(p, widget.stops, d) : const [];
     _shown = 0;
   }
 
@@ -136,11 +168,11 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
 
   Future<void> _moveCamera(GoogleMapController c, LatLng p, LatLng? d) async {
     // Pickup and drop (almost) at the same spot: zoom to a sensible level instead of an empty box.
-    if (d == null || ((p.latitude - d.latitude).abs() < 0.002 && (p.longitude - d.longitude).abs() < 0.002)) {
+    if (d == null || (widget.stops.isEmpty && (p.latitude - d.latitude).abs() < 0.002 && (p.longitude - d.longitude).abs() < 0.002)) {
       await c.animateCamera(CameraUpdate.newLatLngZoom(p, 15));
       return;
     }
-    final pts = [p, d, ..._arc];
+    final pts = [p, d, ...widget.stops, ..._arc];
     var minLat = pts.first.latitude, maxLat = minLat, minLng = pts.first.longitude, maxLng = minLng;
     for (final q in pts) {
       minLat = math.min(minLat, q.latitude);
@@ -173,14 +205,21 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
         markerId: const MarkerId('pickup'),
         position: pickup,
         icon: _pickupIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        anchor: const Offset(0.5, 0.92),
+        anchor: const Offset(0.5, kRoutePinAnchorY),
       ),
       if (widget.drop != null)
         Marker(
           markerId: const MarkerId('drop'),
           position: widget.drop!,
           icon: _dropIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          anchor: const Offset(0.5, 0.92),
+          anchor: const Offset(0.5, kRoutePinAnchorY),
+        ),
+      for (var i = 0; i < widget.stops.length; i++)
+        Marker(
+          markerId: MarkerId('stop_$i'),
+          position: widget.stops[i],
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+          infoWindow: InfoWindow(title: '${'Stop'.tr} ${i + 1}'),
         ),
     };
     final polylines = <Polyline>{
@@ -197,6 +236,7 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     };
     final map = GoogleMap(
       initialCameraPosition: CameraPosition(target: pickup, zoom: 13),
+      style: currentMapStyle(),
       markers: markers,
       polylines: polylines,
       padding: EdgeInsets.only(top: 24, bottom: widget.bottomPadding),

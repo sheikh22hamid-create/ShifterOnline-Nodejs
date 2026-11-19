@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -12,6 +13,7 @@ import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
 import 'package:goParcel/utils/Calculation.dart' show makePhoneCall;
+import 'package:goParcel/screens/home/widgets/search_map.dart' show parseStopPoints;
 import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:flutter/services.dart';
 import 'package:goParcel/screens/home/search_progress.dart';
@@ -75,6 +77,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
   // Map: pickup and drop coordinates from the same order-details response.
   LatLng? _tripPickupLatLng;
   LatLng? _tripDropLatLng;
+  // Stops between pickup and drop (order['stops']), drawn on the search map.
+  List<LatLng> _tripStops = const [];
 
   static void clearPersistedWaitingOrder() {
     getdata.remove(_waitingOrderKey);
@@ -406,6 +410,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
       // Keep the same instances when nothing moved, so the map is not refitted on every recovery.
       if (pick != _tripPickupLatLng) _tripPickupLatLng = pick;
       if (drop != _tripDropLatLng) _tripDropLatLng = drop;
+      final stops = parseStopPoints(order['stops']);
+      if (!listEquals(stops, _tripStops)) _tripStops = stops;
     });
   }
 
@@ -591,9 +597,9 @@ class _WaitingScreenState extends State<WaitingScreen> {
   /// "Need help?": the real customer-care number from the server (never a hard-coded one), then a call.
   Future<void> _contactSupport() async {
     if (_openingSupport) return;
-    _openingSupport = true;
+    setState(() => _openingSupport = true);
     try {
-      final res = await ApiWrapper.dataPostNode(Config.nodeCustomerCare, {});
+      final res = await ApiWrapper.dataPostNode(Config.nodeCustomerCare, {}).timeout(const Duration(seconds: 10));
       final number = (res is Map ? res['customer_care_number'] : null)?.toString().trim() ?? '';
       if (number.isEmpty) {
         ApiWrapper.showToastMessage("Support number is not available right now. Please try again.".tr);
@@ -603,7 +609,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
     } catch (_) {
       ApiWrapper.showToastMessage("Support number is not available right now. Please try again.".tr);
     } finally {
-      _openingSupport = false;
+      if (mounted) setState(() => _openingSupport = false);
     }
   }
 
@@ -615,7 +621,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
     final f = _progress.fractionAt(DateTime.now());
     final stage = searchStage(f);
     Widget rise(int i, Widget child) =>
-        reduceMotion ? child : _RiseIn(delay: Duration(milliseconds: 150 + 120 * i), child: child);
+        reduceMotion
+            ? child
+            : _RiseIn(
+                openedAt: _progress.screenOpenedAt, delay: Duration(milliseconds: 150 + 120 * i), child: child);
 
     return WillPopScope(
       onWillPop: () async {
@@ -682,6 +691,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
                           child: SearchRouteMap(
                             pickup: _tripPickupLatLng,
                             drop: _tripDropLatLng,
+                            stops: _tripStops,
                             bottomPadding: box.maxHeight * sheetMin,
                           ),
                         ),
@@ -725,13 +735,14 @@ class _WaitingScreenState extends State<WaitingScreen> {
                                 WaitingTripCard(
                                   vehicle: _vehicleName,
                                   orderId: widget.orderId,
-                                  fare: _tripFare,
                                   pickup: _tripPickup,
                                   drop: _tripDrop,
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              rise(2, WaitingFareCard(fare: _tripFare, saved: _tripSaved, onHelp: _contactSupport)),
+                              rise(2,
+                                  WaitingFareCard(
+                                      fare: _tripFare, saved: _tripSaved, onHelp: _contactSupport, helpBusy: _openingSupport)),
                               const SizedBox(height: 12),
                               rise(3, _buildGuaranteeCard(late: stage == 3)),
                               const SizedBox(height: 14),
@@ -775,7 +786,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
 
 /// One-time entrance: fades in and rises 24 px after [delay].
 class _RiseIn extends StatefulWidget {
-  const _RiseIn({required this.delay, required this.child});
+  const _RiseIn({required this.openedAt, required this.delay, required this.child});
+
+  /// When the screen opened; the delay counts from here, not from when this card was first built.
+  final DateTime openedAt;
   final Duration delay;
   final Widget child;
 
@@ -790,7 +804,13 @@ class _RiseInState extends State<_RiseIn> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _start = Timer(widget.delay, () {
+    final left = widget.delay - DateTime.now().difference(widget.openedAt);
+    if (left <= Duration.zero) {
+      // Built after its moment (e.g. scrolled into view later): show it as it is, no late fade.
+      _c.value = 1;
+      return;
+    }
+    _start = Timer(left, () {
       if (mounted) _c.forward();
     });
   }

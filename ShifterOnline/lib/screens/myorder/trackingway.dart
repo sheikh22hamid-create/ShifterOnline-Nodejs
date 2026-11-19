@@ -3,6 +3,7 @@
 import 'package:goParcel/screens/home/widgets/search_map.dart';
 import 'package:goParcel/screens/myorder/tracking_steps.dart';
 import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/map_style.dart';
 import 'package:goParcel/screens/myorder/tracking_rules.dart';
 import 'package:goParcel/screens/myorder/widgets/trip_complete_widgets.dart';
 import 'dart:async';
@@ -450,7 +451,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         markerId: const MarkerId('pickup'),
         position: LatLng(pLat, pLng),
         icon: _pickupPin ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-        anchor: _pickupPin == null ? const Offset(0.5, 1) : const Offset(0.5, 0.92),
+        anchor: _pickupPin == null ? const Offset(0.5, 1) : const Offset(0.5, kRoutePinAnchorY),
       ));
     }
     if (dLat != null && dLng != null) {
@@ -458,7 +459,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
         markerId: const MarkerId('drop'),
         position: LatLng(dLat, dLng),
         icon: _dropPin ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        anchor: _dropPin == null ? const Offset(0.5, 1) : const Offset(0.5, 0.92),
+        anchor: _dropPin == null ? const Offset(0.5, 1) : const Offset(0.5, kRoutePinAnchorY),
       ));
     }
     final status = orderProduc?['Order_Status']?.toString().toLowerCase();
@@ -2528,6 +2529,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
               valueListenable: _driverMapPositionNotifier,
               builder: (context, driverPos, _) {
                 return GoogleMap(
+                  style: currentMapStyle(),
                   initialCameraPosition: CameraPosition(target: driverPos ?? LatLng(pLat, pLng), zoom: 13),
                   markers: _buildMapMarkers(),
                   padding: EdgeInsets.only(top: 64, bottom: bottomInset),
@@ -2579,6 +2581,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       valueListenable: _driverMapPositionNotifier,
                       builder: (context, driverPos, _) {
                         return GoogleMap(
+                          style: currentMapStyle(),
                           initialCameraPosition: CameraPosition(
                             target: driverPos ?? LatLng(pLat, pLng),
                             zoom: 13,

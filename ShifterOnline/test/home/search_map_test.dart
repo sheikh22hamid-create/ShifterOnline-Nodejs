@@ -70,4 +70,31 @@ void main() {
     expect(pins.$1, BitmapDescriptor.defaultMarker);
     resetRoutePinCache();
   });
+
+  test('route through stops passes every stop, in order, and joins legs once', () {
+    const s1 = LatLng(22.7250, 75.8800), s2 = LatLng(22.7210, 75.8650);
+    final pts = routeArc(a, [s1, s2], b);
+    expect(pts.first, a);
+    expect(pts.last, b);
+    final i1 = pts.indexOf(s1), i2 = pts.indexOf(s2);
+    expect(i1, greaterThan(0));
+    expect(i2, greaterThan(i1));
+    expect(pts.where((q) => q == s1).length, 1, reason: 'shared joint not doubled');
+    expect(routeArc(a, const [], b), arcBetween(a, b));
+  });
+
+  test('stop points are read from the order, skipping broken entries', () {
+    final pts = parseStopPoints([
+      {'lat': '22.72', 'lng': '75.88', 'sequence': 1},
+      {'lat': null, 'lng': '75.80'},
+      'junk',
+      {'lat': 22.71, 'lng': 75.86},
+    ]);
+    expect(pts, const [LatLng(22.72, 75.88), LatLng(22.71, 75.86)]);
+    expect(parseStopPoints(null), isEmpty);
+  });
+
+  test('pin anchor sits on the drawn tip (88 of 92 px)', () {
+    expect(kRoutePinAnchorY, closeTo(0.9565, 0.001));
+  });
 }

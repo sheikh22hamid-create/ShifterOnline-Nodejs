@@ -69,4 +69,18 @@ void main() {
     await t.pumpWidget(_app(Align(alignment: Alignment.bottomCenter, child: CancelBookingBar(cancelling: true, onCancel: () => n++))));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
+
+  testWidgets('Need help shows a spinner and ignores taps while the number loads', (t) async {
+    var help = 0;
+    await t.pumpWidget(_app(WaitingFareCard(fare: '₹154', saved: 0, helpBusy: true, onHelp: () => help++)));
+    expect(find.byKey(const ValueKey('help-busy')), findsOneWidget);
+    expect(find.text('Contact Support'), findsNothing);
+    await t.tap(find.text('Need help?'));
+    expect(help, 0);
+  });
+
+  testWidgets('trip card without a fare shows the order id alone (fare lives in the fare card)', (t) async {
+    await t.pumpWidget(_app(const WaitingTripCard(vehicle: 'Tata Ace', orderId: '42')));
+    expect(find.text('Order #42'), findsOneWidget);
+  });
 }

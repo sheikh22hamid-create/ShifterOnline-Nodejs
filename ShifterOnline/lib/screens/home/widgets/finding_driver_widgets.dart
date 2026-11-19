@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/route_marker.dart';
+import '../../../theme/widgets/v2_art.dart';
 
 bool _reduceMotion(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
@@ -287,8 +288,21 @@ class WaitingTripCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_has(vehicle)) Text(vehicle!.trim(), style: AppText.bodyStrong(p.ink)),
-          Text(idLine, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
+          Row(
+            children: [
+              V2Art(asset: vehicleArtFor(vehicle), placeholderLabel: 'V', width: 56, height: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_has(vehicle)) Text(vehicle!.trim(), style: AppText.bodyStrong(p.ink)),
+                    Text(idLine, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
+          ),
           if (_has(pickup)) place(const RouteMarker.pickup(size: 20), pickup!),
           if (_has(drop)) place(const RouteMarker.drop(size: 20), drop!),
         ],
@@ -437,11 +451,15 @@ class _Bit {
 
 /// "Total fare ₹X", a "You saved ₹Y" line only when a real coupon saving exists, and "Need help?".
 class WaitingFareCard extends StatelessWidget {
-  const WaitingFareCard({super.key, required this.fare, required this.saved, required this.onHelp});
+  const WaitingFareCard(
+      {super.key, required this.fare, required this.saved, required this.onHelp, this.helpBusy = false});
 
   final String? fare;
   final double saved;
   final VoidCallback onHelp;
+
+  /// True while the support number is being fetched: a small spinner replaces "Contact Support".
+  final bool helpBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -485,7 +503,7 @@ class WaitingFareCard extends StatelessWidget {
             ),
           if (hasFare) Divider(height: 1, color: p.divider),
           InkWell(
-            onTap: onHelp,
+            onTap: helpBusy ? null : onHelp,
             borderRadius: BorderRadius.circular(AppRadius.card),
             child: ConstrainedBox(
               constraints: const BoxConstraints(minHeight: 52),
@@ -496,7 +514,15 @@ class WaitingFareCard extends StatelessWidget {
                     Icon(Icons.support_agent_rounded, color: p.inkMuted, size: 22),
                     const SizedBox(width: 12),
                     Expanded(child: Text('Need help?'.tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14))),
-                    Text('Contact Support'.tr, style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 13.5)),
+                    if (helpBusy)
+                      SizedBox(
+                        key: const ValueKey('help-busy'),
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: p.brandText),
+                      )
+                    else
+                      Text('Contact Support'.tr, style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 13.5)),
                   ],
                 ),
               ),
