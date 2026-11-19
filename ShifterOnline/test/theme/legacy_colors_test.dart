@@ -11,6 +11,7 @@ const _swept = <String>[
   'lib/screens/authscreen/signin.dart',
   'lib/screens/authscreen/verification.dart',
   'lib/screens/authscreen/complete_profile.dart',
+  'lib/screens/home/widgets/finding_driver_widgets.dart',
 ];
 
 void main() {
