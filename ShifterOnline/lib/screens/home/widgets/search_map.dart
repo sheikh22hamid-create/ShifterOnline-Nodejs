@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../theme/app_tokens.dart';
@@ -110,7 +111,7 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     });
   }
 
-  Future<void> _fit() async {
+  Future<void> _fit({bool draw = true}) async {
     final c = _controller;
     final p = widget.pickup, d = widget.drop;
     if (c == null || _fitted || p == null) return;
@@ -129,7 +130,13 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
     }
     await c.animateCamera(CameraUpdate.newLatLngBounds(
         LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)), 64));
-    if (mounted) _startDraw();
+    if (mounted && draw) _startDraw();
+  }
+
+  /// Recenter button: frame pickup and drop again after the user panned away.
+  void _recenter() {
+    _fitted = false;
+    _fit(draw: false);
   }
 
   @override
@@ -167,7 +174,7 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
           jointType: JointType.round,
         ),
     };
-    return GoogleMap(
+    final map = GoogleMap(
       initialCameraPosition: CameraPosition(target: pickup, zoom: 13),
       markers: markers,
       polylines: polylines,
@@ -182,6 +189,28 @@ class _SearchRouteMapState extends State<SearchRouteMap> with SingleTickerProvid
         _controller = c;
         _fit();
       },
+    );
+    return Stack(
+      children: [
+        Positioned.fill(child: map),
+        Positioned(
+          right: 14,
+          bottom: widget.bottomPadding + 14,
+          child: Material(
+            color: p.surface,
+            shape: const CircleBorder(),
+            elevation: 3,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _recenter,
+              child: Tooltip(
+                message: 'Recenter'.tr,
+                child: SizedBox(width: 48, height: 48, child: Icon(Icons.my_location_rounded, color: p.ink, size: 22)),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

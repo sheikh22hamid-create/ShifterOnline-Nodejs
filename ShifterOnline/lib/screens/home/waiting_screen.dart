@@ -11,6 +11,7 @@ import 'package:goParcel/screens/home/trackingpoliyline.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
+import 'package:goParcel/utils/Calculation.dart' show makePhoneCall;
 import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:flutter/services.dart';
 import 'package:goParcel/screens/home/search_progress.dart';
@@ -27,7 +28,12 @@ class WaitingScreen extends StatefulWidget {
   final String? vehicleName;
   /// True when the customer booked the last available model, false for an earlier one, null if unknown.
   final bool? lastModelSelected;
-  const WaitingScreen({Key? key, required this.orderId, this.vehicleName, this.lastModelSelected}) : super(key: key);
+
+  /// True only when opened straight after "Book" (shows the short "Booking placed" moment); false when the
+  /// app restores this screen.
+  final bool justBooked;
+  const WaitingScreen({Key? key, required this.orderId, this.vehicleName, this.lastModelSelected, this.justBooked = false})
+      : super(key: key);
 
   @override
   State<WaitingScreen> createState() => _WaitingScreenState();
@@ -64,6 +70,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
   String? _tripFare;
   String? _tripPickup;
   String? _tripDrop;
+  // Coupon saving booked on this order (cou_amt); shown only when > 0.
+  double _tripSaved = 0;
   // Map: pickup and drop coordinates from the same order-details response.
   LatLng? _tripPickupLatLng;
   LatLng? _tripDropLatLng;
@@ -388,6 +396,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
       // An order time in the future (clock skew) would freeze the bar; fall back to time on screen.
       _progress.orderedAt = orderedAt != null && !orderedAt.isAfter(DateTime.now()) ? orderedAt : null;
       _tripFare = total == null ? null : '₹$total';
+      _tripSaved = double.tryParse(text(order['cou_amt']) ?? '') ?? 0;
       _tripPickup = text(order['customer_paddress']);
       _tripDrop = text(order['customer_daddress']);
       final pLat = double.tryParse(text(order['plat']) ?? ''), pLng = double.tryParse(text(order['plong']) ?? '');
@@ -577,6 +586,27 @@ class _WaitingScreenState extends State<WaitingScreen> {
     });
   }
 
+  bool _openingSupport = false;
+
+  /// "Need help?": the real customer-care number from the server (never a hard-coded one), then a call.
+  Future<void> _contactSupport() async {
+    if (_openingSupport) return;
+    _openingSupport = true;
+    try {
+      final res = await ApiWrapper.dataPostNode(Config.nodeCustomerCare, {});
+      final number = (res is Map ? res['customer_care_number'] : null)?.toString().trim() ?? '';
+      if (number.isEmpty) {
+        ApiWrapper.showToastMessage("Support number is not available right now. Please try again.".tr);
+        return;
+      }
+      await makePhoneCall(number);
+    } catch (_) {
+      ApiWrapper.showToastMessage("Support number is not available right now. Please try again.".tr);
+    } finally {
+      _openingSupport = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
@@ -597,7 +627,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
             .copyWith(statusBarColor: Colors.transparent),
         child: Scaffold(
           backgroundColor: p.canvas,
-          body: Column(
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: Column(
             children: [
               // Header: same look as the tracking screen (TrackingWay._buildModernHeader), so the hand-off
               // to tracking does not change the top of the screen.
@@ -698,10 +731,12 @@ class _WaitingScreenState extends State<WaitingScreen> {
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              rise(2, _buildGuaranteeCard(late: stage == 3)),
+                              rise(2, WaitingFareCard(fare: _tripFare, saved: _tripSaved, onHelp: _contactSupport)),
+                              const SizedBox(height: 12),
+                              rise(3, _buildGuaranteeCard(late: stage == 3)),
                               const SizedBox(height: 14),
                               rise(
-                                3,
+                                4,
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -741,6 +776,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
                   );
                 }),
               ),
+            ],
+          ),
+              ),
+              if (widget.justBooked) const Positioned.fill(child: BookingConfirmedOverlay()),
             ],
           ),
         ),

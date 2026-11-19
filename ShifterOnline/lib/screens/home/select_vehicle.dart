@@ -1147,7 +1147,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
               : "Your order #$orderId is scheduled for ${DateFormat('EEE, d MMM · h:mm a').format(_scheduledFor!)}. It will go live at exactly that time, and a driver will then be assigned.",
         );
       } else {
-        Get.offAll(() => WaitingScreen(orderId: orderId, vehicleName: _vehicleName(_selected!), lastModelSelected: _isLastModel(model)));
+        Get.offAll(() => WaitingScreen(orderId: orderId, vehicleName: _vehicleName(_selected!), lastModelSelected: _isLastModel(model), justBooked: true));
       }
     } else {
       final msg = _text(response is Map ? response['ResponseMsg'] : null, 'Order could not be placed.');
