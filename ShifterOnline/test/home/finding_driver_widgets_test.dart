@@ -24,6 +24,8 @@ void main() {
     await t.pump();
     await t.pump(const Duration(milliseconds: 50));
     expect(find.byType(VehicleBookingAnimation), findsOneWidget);
+    expect(t.widget<VehicleBookingAnimation>(find.byType(VehicleBookingAnimation)).scenery, isFalse,
+        reason: 'on the hero the vehicle drives on the orange road, not inside its own white card');
     expect(t.takeException(), isNull);
   });
 

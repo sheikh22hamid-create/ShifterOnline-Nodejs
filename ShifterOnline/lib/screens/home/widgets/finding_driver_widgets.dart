@@ -172,7 +172,7 @@ class _FindingDriverHeroState extends State<FindingDriverHero>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
-                          width: 178 + 60,
+                          width: 220 + 60,
                           height: 116,
                           child: Stack(
                             clipBehavior: Clip.none,
@@ -185,7 +185,7 @@ class _FindingDriverHeroState extends State<FindingDriverHero>
                               Positioned(
                                 left: 60,
                                 top: 0,
-                                width: 178,
+                                width: 220,
                                 height: 116,
                                 child: Transform.translate(
                                   offset: Offset(0, bob),
@@ -196,14 +196,18 @@ class _FindingDriverHeroState extends State<FindingDriverHero>
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Transform.scale(
-                          scaleX: shadowScale,
-                          child: Container(
-                            width: 130,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              color: p.onBrand.withValues(alpha: .26),
-                              borderRadius: const BorderRadius.all(Radius.elliptical(65, 6)),
+                        // Under the vehicle, which sits 60 px right of the speed-line gutter.
+                        Transform.translate(
+                          offset: const Offset(30, 0),
+                          child: Transform.scale(
+                            scaleX: shadowScale,
+                            child: Container(
+                              width: 130,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: p.onBrand.withValues(alpha: .26),
+                                borderRadius: const BorderRadius.all(Radius.elliptical(65, 6)),
+                              ),
                             ),
                           ),
                         ),
@@ -254,7 +258,8 @@ class _FindingDriverHeroState extends State<FindingDriverHero>
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                               child: Center(
                                 widthFactor: 1,
-                                child: Text('Go to Home'.tr, style: AppText.bodyStrong(p.onBrand).copyWith(fontSize: 14)),
+                                child:
+                                    Text('Go to Home'.tr, style: AppText.bodyStrong(p.onBrand).copyWith(fontSize: 14)),
                               ),
                             ),
                           ),
@@ -274,14 +279,12 @@ class _FindingDriverHeroState extends State<FindingDriverHero>
   Widget _vehicle(AppPalette p, bool still) {
     Widget fallback() => TickerMode(
           enabled: !still,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(18),
-            child: VehicleBookingAnimation(
-              vehicleName: widget.vehicleName,
-              height: 110,
-              showLabel: false,
-              backgroundColor: p.brandTint,
-            ),
+          // Only the vehicle, driving on the hero's own road (no card / sky / road of its own).
+          child: VehicleBookingAnimation(
+            vehicleName: widget.vehicleName,
+            height: 116,
+            showLabel: false,
+            scenery: false,
           ),
         );
     return Image.asset(

@@ -26,12 +26,18 @@ class VehicleBookingAnimation extends StatefulWidget {
     this.height = 150,
     this.showLabel = true,
     this.backgroundColor = Colors.white,
+    this.scenery = true,
   });
 
   final String vehicleName;
   final double height;
   final bool showLabel;
   final Color backgroundColor;
+
+  /// False draws only the vehicle (no card, sky, road, speed lines, shadow or label), filling the box,
+  /// so it can drive on a scene drawn by the parent (Finding-your-driver hero). Orange parts turn navy
+  /// there so the vehicle stands out on the orange band.
+  final bool scenery;
 
   @override
   State<VehicleBookingAnimation> createState() => _VehicleBookingAnimationState();
@@ -56,6 +62,17 @@ class _VehicleBookingAnimationState extends State<VehicleBookingAnimation> with 
   @override
   Widget build(BuildContext context) {
     final kind = bookedVehicleKindFor(widget.vehicleName);
+    if (!widget.scenery) {
+      return RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) => CustomPaint(
+            painter: _VehiclePainter(kind: kind, t: _controller.value, scenery: false),
+            size: Size.infinite,
+          ),
+        ),
+      );
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -104,10 +121,12 @@ class _VehicleBookingAnimationState extends State<VehicleBookingAnimation> with 
 }
 
 class _VehiclePainter extends CustomPainter {
-  _VehiclePainter({required this.kind, required this.t});
+  _VehiclePainter({required this.kind, required this.t, this.scenery = true})
+      : _orange = scenery ? _brandOrange : _navy;
 
   final BookedVehicleKind kind;
   final double t; // 0..1, loops
+  final bool scenery;
 
   // Drawing space: 320 x 160, ground line at y = 128. Vehicles face right.
   static const double _w = 320;
@@ -115,19 +134,35 @@ class _VehiclePainter extends CustomPainter {
   static const double _ground = 128;
 
   static const Color _ink = Color(0xFF1F2937);
-  static const Color _orange = Color(0xFFFA4500);
+  static const Color _brandOrange = Color(0xFFFA4500);
+  // Body colour when drawn on the orange hero (scenery off): orange-on-orange would disappear.
+  static const Color _navy = Color(0xFF243B6B);
+  final Color _orange;
+
+  // Scenery off: the part of the drawing space the vehicles occupy (ground at the bottom edge).
+  static const Rect _vehicleView = Rect.fromLTRB(60, 40, 280, 132);
+  static const Rect _bikeView = Rect.fromLTRB(96, 56, 240, 132);
   static const Color _glass = Color(0xFFBFE3F5);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = math.min(size.width / _w, size.height / _h);
     canvas.save();
-    canvas.translate((size.width - _w * scale) / 2, (size.height - _h * scale) / 2);
-    canvas.scale(scale);
-
-    _drawSky(canvas);
-    _drawRoad(canvas);
-    _drawSpeedLines(canvas);
+    if (scenery) {
+      final scale = math.min(size.width / _w, size.height / _h);
+      canvas.translate((size.width - _w * scale) / 2, (size.height - _h * scale) / 2);
+      canvas.scale(scale);
+      _drawSky(canvas);
+      _drawRoad(canvas);
+      _drawSpeedLines(canvas);
+    } else {
+      // Fill the box, wheels on its bottom edge, centred horizontally.
+      // The bike is much smaller than the trucks; frame it tighter so it reads at the same size.
+      final v = kind == BookedVehicleKind.bike ? _bikeView : _vehicleView;
+      final scale = math.min(size.width / v.width, size.height / v.height);
+      canvas.translate((size.width - v.width * scale) / 2, size.height - v.height * scale);
+      canvas.scale(scale);
+      canvas.translate(-v.left, -v.top);
+    }
 
     // Suspension bounce (4 per loop) and a tiny forward-back rock so it feels like it is driving.
     final bob = math.sin(t * 2 * math.pi * 4) * 1.6;
@@ -225,6 +260,7 @@ class _VehiclePainter extends CustomPainter {
   }
 
   void _shadow(Canvas canvas, double halfWidth) {
+    if (!scenery) return; // the parent scene draws its own ground shadow
     canvas.drawOval(
       Rect.fromCenter(center: const Offset(0, 1), width: halfWidth * 2, height: 8),
       Paint()..color = Colors.black.withOpacity(0.18),
@@ -432,5 +468,5 @@ class _VehiclePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _VehiclePainter old) => old.t != t || old.kind != kind;
+  bool shouldRepaint(covariant _VehiclePainter old) => old.t != t || old.kind != kind || old.scenery != scenery;
 }
