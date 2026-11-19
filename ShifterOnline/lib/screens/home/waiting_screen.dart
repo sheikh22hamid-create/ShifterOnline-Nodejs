@@ -15,6 +15,8 @@ import 'package:goParcel/utils/scheduled_order_watch.dart';
 import 'package:flutter/services.dart';
 import 'package:goParcel/screens/home/search_progress.dart';
 import 'package:goParcel/screens/home/widgets/finding_driver_widgets.dart';
+import 'package:goParcel/screens/home/widgets/search_map.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:goParcel/theme/app_tokens.dart';
 
 class WaitingScreen extends StatefulWidget {
@@ -62,6 +64,9 @@ class _WaitingScreenState extends State<WaitingScreen> {
   String? _tripFare;
   String? _tripPickup;
   String? _tripDrop;
+  // Map: pickup and drop coordinates from the same order-details response.
+  LatLng? _tripPickupLatLng;
+  LatLng? _tripDropLatLng;
 
   static void clearPersistedWaitingOrder() {
     getdata.remove(_waitingOrderKey);
@@ -384,6 +389,13 @@ class _WaitingScreenState extends State<WaitingScreen> {
       _tripFare = total == null ? null : '₹$total';
       _tripPickup = text(order['customer_paddress']);
       _tripDrop = text(order['customer_daddress']);
+      final pLat = double.tryParse(text(order['plat']) ?? ''), pLng = double.tryParse(text(order['plong']) ?? '');
+      final dLat = double.tryParse(text(order['dlat']) ?? ''), dLng = double.tryParse(text(order['dlong']) ?? '');
+      final pick = pLat != null && pLng != null ? LatLng(pLat, pLng) : null;
+      final drop = dLat != null && dLng != null ? LatLng(dLat, dLng) : null;
+      // Keep the same instances when nothing moved, so the map is not refitted on every recovery.
+      if (pick != _tripPickupLatLng) _tripPickupLatLng = pick;
+      if (drop != _tripDropLatLng) _tripDropLatLng = drop;
     });
   }
 
@@ -566,11 +578,12 @@ class _WaitingScreenState extends State<WaitingScreen> {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
+    final isDark = AppPalette.current == AppPalette.dark;
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final f = _progress.fractionAt(DateTime.now());
     final stage = searchStage(f);
     Widget rise(int i, Widget child) =>
-        reduceMotion ? child : _RiseIn(delay: Duration(milliseconds: 100 + 150 * i), child: child);
+        reduceMotion ? child : _RiseIn(delay: Duration(milliseconds: 150 + 120 * i), child: child);
 
     return WillPopScope(
       onWillPop: () async {
@@ -578,170 +591,154 @@ class _WaitingScreenState extends State<WaitingScreen> {
         return false;
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        // Dark status-bar icons on the orange hero, in both themes.
-        value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+        value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+            .copyWith(statusBarColor: Colors.transparent),
         child: Scaffold(
           backgroundColor: p.canvas,
           body: Column(
             children: [
-              FindingDriverHero(
-                vehicleName: _vehicleName,
-                onBack: _navigateBackToHome,
-                onHome: _navigateBackToHome,
+              // Header, like Porter's trip screen: back · Order #id · Home.
+              Material(
+                color: p.surface,
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          onPressed: _navigateBackToHome,
+                          tooltip: 'Back'.tr,
+                          icon: Icon(Icons.arrow_back_rounded, color: p.ink),
+                        ),
+                        Expanded(
+                          child: Text(
+                            '${'Order'.tr} #${widget.orderId}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.section(p.ink),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _navigateBackToHome,
+                          icon: Icon(Icons.home_outlined, size: 18, color: p.brandText),
+                          label: Text("Go to Home".tr, style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 14)),
+                          style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
               const SocketStatusBanner(),
               Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: LayoutBuilder(builder: (context, box) {
+                  const sheetMin = 0.46;
+                  return Stack(
                     children: [
-                      rise(
-                        0,
-                        Column(children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                      // Map with the curved pickup → drop route; built once (RepaintBoundary keeps the
+                      // per-second sheet refresh from touching it).
+                      Positioned.fill(
+                        child: RepaintBoundary(
+                          child: SearchRouteMap(
+                            pickup: _tripPickupLatLng,
+                            drop: _tripDropLatLng,
+                            bottomPadding: box.maxHeight * sheetMin,
+                          ),
+                        ),
+                      ),
+                      DraggableScrollableSheet(
+                        initialChildSize: sheetMin,
+                        minChildSize: sheetMin,
+                        maxChildSize: 0.94,
+                        snap: true,
+                        builder: (context, scroll) => DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: p.canvas,
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                            boxShadow: [
+                              BoxShadow(color: p.navShadow, blurRadius: 18, offset: const Offset(0, -4)),
+                            ],
+                          ),
+                          child: ListView(
+                            controller: scroll,
+                            padding: EdgeInsets.fromLTRB(16, 10, 16, 16 + MediaQuery.paddingOf(context).bottom),
                             children: [
-                              _LiveDot(color: p.brand, animate: !reduceMotion),
-                              const SizedBox(width: 10),
-                              Flexible(
-                                child: Text(
-                                  (stage == 3 ? "Still finding your driver" : "Finding your driver").tr,
-                                  textAlign: TextAlign.center,
-                                  style: AppText.title(p.ink),
+                              Center(
+                                child: Container(
+                                  width: 40,
+                                  height: 4,
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(2)),
+                                ),
+                              ),
+                              rise(
+                                0,
+                                SearchingCard(
+                                  bar: searchBar(f),
+                                  stage: stage,
+                                  message: kSearchStageMessages[stage].tr,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              rise(
+                                1,
+                                WaitingTripCard(
+                                  vehicle: _vehicleName,
+                                  orderId: widget.orderId,
+                                  fare: _tripFare,
+                                  pickup: _tripPickup,
+                                  drop: _tripDrop,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              rise(2, _buildGuaranteeCard(late: stage == 3)),
+                              const SizedBox(height: 14),
+                              rise(
+                                3,
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.notifications_none_rounded, size: 20, color: p.inkMuted),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        "You can leave this screen. We'll let you know when a driver accepts.".tr,
+                                        style: AppText.caption(p.inkMuted).copyWith(fontSize: 13, height: 1.4),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Center(
+                                child: TextButton(
+                                  onPressed: _isCancelling ? null : _showCancelDialog,
+                                  style: TextButton.styleFrom(minimumSize: const Size(120, 44), foregroundColor: p.inkMuted),
+                                  child: _isCancelling
+                                      ? SizedBox(
+                                          height: 18,
+                                          width: 18,
+                                          child: CircularProgressIndicator(color: p.inkMuted, strokeWidth: 2),
+                                        )
+                                      : Text(
+                                          "Cancel booking".tr,
+                                          style: AppText.body(p.danger).copyWith(fontSize: 14),
+                                        ),
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 6),
-                          StageMessage(text: kSearchStageMessages[stage].tr),
-                        ]),
-                      ),
-                      const SizedBox(height: 16),
-                      rise(1, SearchProgressCard(progress: searchBar(f), notified: stage >= 1)),
-                      const SizedBox(height: 12),
-                      rise(
-                        2,
-                        WaitingTripCard(
-                          vehicle: _vehicleName,
-                          orderId: widget.orderId,
-                          fare: _tripFare,
-                          pickup: _tripPickup,
-                          drop: _tripDrop,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      rise(3, _buildGuaranteeCard(late: stage == 3)),
-                      const SizedBox(height: 14),
-                      rise(
-                        4,
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.notifications_none_rounded, size: 20, color: p.inkMuted),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                "You can leave this screen. We'll let you know when a driver accepts.".tr,
-                                style: AppText.caption(p.inkMuted).copyWith(fontSize: 13, height: 1.4),
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ],
-                  ),
-                ),
-              ),
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: TextButton(
-                    onPressed: _isCancelling ? null : _showCancelDialog,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(120, 44),
-                      foregroundColor: p.inkMuted,
-                    ),
-                    child: _isCancelling
-                        ? SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(color: p.inkMuted, strokeWidth: 2),
-                          )
-                        : Text(
-                            "Cancel booking".tr,
-                            style: AppText.body(p.inkMuted).copyWith(
-                              fontSize: 14,
-                              decoration: TextDecoration.underline,
-                              decorationColor: p.inkMuted,
-                            ),
-                          ),
-                  ),
-                ),
+                  );
+                }),
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Small brand dot beside the title that pulses a soft ring ("live").
-class _LiveDot extends StatefulWidget {
-  const _LiveDot({required this.color, required this.animate});
-  final Color color;
-  final bool animate;
-
-  @override
-  State<_LiveDot> createState() => _LiveDotState();
-}
-
-class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.animate) _c.repeat();
-  }
-
-  @override
-  void didUpdateWidget(_LiveDot old) {
-    super.didUpdateWidget(old);
-    if (widget.animate && !_c.isAnimating) {
-      _c.repeat();
-    } else if (!widget.animate) {
-      _c.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, __) {
-        final t = _c.value;
-        final ring = 8 * (t < .5 ? t * 2 : 2 - t * 2);
-        return Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: widget.color,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: widget.color.withValues(alpha: .45 * (1 - ring / 8)), spreadRadius: ring),
-            ],
-          ),
-        );
-      },
     );
   }
 }
@@ -757,7 +754,7 @@ class _RiseIn extends StatefulWidget {
 }
 
 class _RiseInState extends State<_RiseIn> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 450));
   Timer? _start;
 
   @override
@@ -777,7 +774,7 @@ class _RiseInState extends State<_RiseIn> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final a = CurvedAnimation(parent: _c, curve: Curves.easeOut);
+    final a = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
     return AnimatedBuilder(
       animation: a,
       builder: (_, child) => Opacity(

@@ -5,19 +5,6 @@ import 'package:get/get.dart';
 
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/route_marker.dart';
-import '../vehicle_booking_animation.dart';
-
-/// White used for things drawn ON the orange hero band (clouds, speed lines, lane, buttons).
-/// The band is brand orange in both themes, so this white is theme-independent.
-const Color _onBandWhite = Color(0xFFFFFFFF);
-
-/// 3D vehicle image (owner-generated, prompts V1–V4) for a booked vehicle kind.
-String vehicleArtFor(BookedVehicleKind kind) => switch (kind) {
-      BookedVehicleKind.bike => 'assets/v2/vehicle_bike.png',
-      BookedVehicleKind.eLoader => 'assets/v2/vehicle_e_loader.png',
-      BookedVehicleKind.threeWheeler => 'assets/v2/vehicle_three_wheeler.png',
-      BookedVehicleKind.fourWheeler => 'assets/v2/vehicle_four_wheeler.png',
-    };
 
 bool _reduceMotion(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
@@ -54,336 +41,6 @@ mixin _LoopingControllers<T extends StatefulWidget> on State<T>, TickerProviderS
 }
 
 // ---------------------------------------------------------------------------
-// Hero
-// ---------------------------------------------------------------------------
-
-/// Orange band with a vehicle driving on a road: clouds, a scrolling skyline, a dashed lane.
-class FindingDriverHero extends StatefulWidget {
-  const FindingDriverHero({super.key, required this.vehicleName, required this.onBack, required this.onHome});
-
-  final String vehicleName;
-  final VoidCallback onBack;
-  final VoidCallback onHome;
-
-  static const double height = 318;
-
-  @override
-  State<FindingDriverHero> createState() => _FindingDriverHeroState();
-}
-
-const List<double> _buildingHeights = [38, 56, 30, 64, 44, 52, 28, 60, 40, 48, 34, 58];
-
-class _FindingDriverHeroState extends State<FindingDriverHero>
-    with TickerProviderStateMixin, _LoopingControllers<FindingDriverHero> {
-  late final AnimationController _cloud = loop(const Duration(seconds: 14));
-  late final AnimationController _city = loop(const Duration(seconds: 18));
-  late final AnimationController _lane = loop(const Duration(milliseconds: 600));
-  late final AnimationController _drive = loop(const Duration(milliseconds: 900));
-
-  @override
-  void initState() {
-    super.initState();
-    // Touch the lazies so the mixin knows every loop before didChangeDependencies.
-    _cloud;
-    _city;
-    _lane;
-    _drive;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.current;
-    final still = _reduceMotion(context);
-    final road = Color.alphaBlend(p.onBrand.withValues(alpha: .10), p.brand);
-    final skyline = p.onBrand.withValues(alpha: .28);
-
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-      child: Container(
-        height: FindingDriverHero.height,
-        color: p.brand,
-        child: LayoutBuilder(builder: (context, box) {
-          final w = box.maxWidth;
-          return Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              // Clouds drift right → left.
-              _cloudAt(w, top: 70, width: 70, height: 22, alpha: .55, period: 1.0, phase: 0),
-              _cloudAt(w, top: 108, width: 46, height: 16, alpha: .45, period: 20 / 14, phase: .4),
-              _cloudAt(w, top: 54, width: 54, height: 18, alpha: .40, period: 17 / 14, phase: .76),
-
-              // Skyline, two copies for a seamless loop.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 92,
-                height: 70,
-                child: ClipRect(
-                  child: AnimatedBuilder(
-                    animation: _city,
-                    builder: (_, child) => OverflowBox(
-                      alignment: Alignment.bottomLeft,
-                      maxWidth: double.infinity,
-                      child: Transform.translate(offset: Offset(-_city.value * _skylineWidth, 0), child: child),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [_skyline(skyline), _skyline(skyline)],
-                    ),
-                  ),
-                ),
-              ),
-
-              // Road with a dashed lane.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 92,
-                child: Container(
-                  color: road,
-                  alignment: Alignment.topLeft,
-                  padding: const EdgeInsets.only(top: 44),
-                  child: SizedBox(
-                    height: 5,
-                    width: double.infinity,
-                    child: AnimatedBuilder(
-                      animation: _lane,
-                      builder: (_, __) => CustomPaint(painter: _LanePainter(_lane.value)),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Vehicle, speed lines and ground shadow.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 46,
-                child: AnimatedBuilder(
-                  animation: _drive,
-                  builder: (_, child) {
-                    final t = _drive.value;
-                    final bob = still ? 0.0 : -3 * math.sin(t * 2 * math.pi).abs();
-                    final tilt = still ? 0.0 : 0.01 * math.sin(t * 2 * math.pi);
-                    final shadowScale = still ? 1.0 : 1 - 0.1 * math.sin(t * math.pi);
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 220 + 60,
-                          height: 116,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              if (!still) ...[
-                                _speedLine(t, 0, width: 36, left: 14, top: 40),
-                                _speedLine(t, .33, width: 24, left: 22, top: 62),
-                                _speedLine(t, .66, width: 30, left: 8, top: 82),
-                              ],
-                              Positioned(
-                                left: 60,
-                                top: 0,
-                                width: 220,
-                                height: 116,
-                                child: Transform.translate(
-                                  offset: Offset(0, bob),
-                                  child: Transform.rotate(angle: tilt, child: child),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        // Under the vehicle, which sits 60 px right of the speed-line gutter.
-                        Transform.translate(
-                          offset: const Offset(30, 0),
-                          child: Transform.scale(
-                            scaleX: shadowScale,
-                            child: Container(
-                              width: 130,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: p.onBrand.withValues(alpha: .26),
-                                borderRadius: const BorderRadius.all(Radius.elliptical(65, 6)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                  child: _vehicle(p, still),
-                ),
-              ),
-
-              // Top row: back + Go to Home.
-              Positioned(
-                left: 16,
-                right: 16,
-                top: 14,
-                child: SafeArea(
-                  bottom: false,
-                  child: Row(
-                    children: [
-                      Semantics(
-                        button: true,
-                        label: 'Back'.tr,
-                        excludeSemantics: true,
-                        child: Material(
-                          color: _onBandWhite,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: widget.onBack,
-                            child: SizedBox(
-                              width: 44,
-                              height: 44,
-                              child: Icon(Icons.arrow_back_rounded, size: 20, color: p.onBrand),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Material(
-                        color: _onBandWhite,
-                        shape: const StadiumBorder(),
-                        child: InkWell(
-                          customBorder: const StadiumBorder(),
-                          onTap: widget.onHome,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 40),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              child: Center(
-                                widthFactor: 1,
-                                child:
-                                    Text('Go to Home'.tr, style: AppText.bodyStrong(p.onBrand).copyWith(fontSize: 14)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _vehicle(AppPalette p, bool still) {
-    Widget fallback() => TickerMode(
-          enabled: !still,
-          // Only the vehicle, driving on the hero's own road (no card / sky / road of its own).
-          child: VehicleBookingAnimation(
-            vehicleName: widget.vehicleName,
-            height: 116,
-            showLabel: false,
-            scenery: false,
-          ),
-        );
-    return Image.asset(
-      vehicleArtFor(bookedVehicleKindFor(widget.vehicleName)),
-      height: 116,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => fallback(),
-    );
-  }
-
-  Widget _cloudAt(double w,
-      {required double top,
-      required double width,
-      required double height,
-      required double alpha,
-      required double period,
-      required double phase}) {
-    return AnimatedBuilder(
-      animation: _cloud,
-      builder: (_, child) {
-        final t = ((_cloud.value / period) + phase) % 1.0;
-        final left = (w + 30) - t * (w + 30 + width + 30);
-        return Positioned(left: left, top: top, child: child!);
-      },
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: _onBandWhite.withValues(alpha: alpha),
-          borderRadius: BorderRadius.circular(height),
-        ),
-      ),
-    );
-  }
-
-  Widget _speedLine(double t, double delay, {required double width, required double left, required double top}) {
-    final k = (t + 1 - delay) % 1.0;
-    final opacity = k < .3 ? (k / .3) * .9 : .9 * (1 - (k - .3) / .7);
-    return Positioned(
-      left: left - 60 * k,
-      top: top,
-      child: Opacity(
-        opacity: opacity.clamp(0.0, 1.0),
-        child: Container(
-          width: width,
-          height: 3,
-          decoration: BoxDecoration(color: _onBandWhite, borderRadius: BorderRadius.circular(2)),
-        ),
-      ),
-    );
-  }
-}
-
-const double _buildingGap = 6;
-
-List<Size> _buildings() => List.generate(24, (i) {
-      final w = 22.0 + ((i * 7) % 18);
-      return Size(w, _buildingHeights[i % _buildingHeights.length]);
-    });
-
-final double _skylineWidth = _buildings().fold<double>(0, (s, b) => s + b.width + _buildingGap);
-
-Widget _skyline(Color color) => Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        for (final b in _buildings())
-          Padding(
-            padding: const EdgeInsets.only(right: _buildingGap),
-            child: Container(
-              width: b.width,
-              height: b.height,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-              ),
-            ),
-          ),
-      ],
-    );
-
-class _LanePainter extends CustomPainter {
-  _LanePainter(this.t);
-  final double t;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = _onBandWhite.withValues(alpha: .85);
-    const dash = 48.0, period = 96.0;
-    for (var x = -t * period; x < size.width; x += period) {
-      canvas.drawRect(Rect.fromLTWH(x, 0, dash, size.height), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_LanePainter old) => old.t != t;
-}
-
-// ---------------------------------------------------------------------------
 // Stage message
 // ---------------------------------------------------------------------------
 
@@ -417,28 +74,40 @@ class StageMessage extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Progress card
+// Searching card (Porter-style: icon, "Searching for drivers nearby…", 3 segments)
 // ---------------------------------------------------------------------------
 
-/// Orange bar (never full until a driver accepts) with a shimmer, plus 3 steps.
-class SearchProgressCard extends StatefulWidget {
-  const SearchProgressCard({super.key, required this.progress, required this.notified});
-
-  /// 0..1 bar fill.
-  final double progress;
-  final bool notified;
-
-  @override
-  State<SearchProgressCard> createState() => _SearchProgressCardState();
+/// Fill (0..1) of each of [count] segments for an overall [bar] (0..1); they fill one after another.
+List<double> segmentFills(double bar, {int count = 3}) {
+  final v = bar.clamp(0.0, 1.0) * count;
+  return [for (var i = 0; i < count; i++) (v - i).clamp(0.0, 1.0).toDouble()];
 }
 
-class _SearchProgressCardState extends State<SearchProgressCard>
-    with TickerProviderStateMixin, _LoopingControllers<SearchProgressCard> {
-  late final AnimationController _shimmer = loop(const Duration(milliseconds: 1800));
+/// The card on the sheet while a driver is searched: a gently scanning search icon, the title, the
+/// truthful stage message, and a 3-part bar (never full until a driver accepts).
+class SearchingCard extends StatefulWidget {
+  const SearchingCard({super.key, required this.bar, required this.stage, required this.message});
+
+  /// Overall progress 0..1 (from searchBar).
+  final double bar;
+
+  /// 0..3; 3 = late ("Still searching…").
+  final int stage;
+  final String message;
+
+  @override
+  State<SearchingCard> createState() => _SearchingCardState();
+}
+
+class _SearchingCardState extends State<SearchingCard>
+    with TickerProviderStateMixin, _LoopingControllers<SearchingCard> {
+  late final AnimationController _scan = loop(const Duration(milliseconds: 2400));
+  late final AnimationController _shimmer = loop(const Duration(milliseconds: 1600));
 
   @override
   void initState() {
     super.initState();
+    _scan;
     _shimmer;
   }
 
@@ -446,117 +115,111 @@ class _SearchProgressCardState extends State<SearchProgressCard>
   Widget build(BuildContext context) {
     final p = AppPalette.current;
     final still = _reduceMotion(context);
-    final value = widget.progress.clamp(0.0, 1.0).toDouble();
+    final fills = segmentFills(widget.bar);
+    final active = fills.indexWhere((f) => f < 1);
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
       decoration: BoxDecoration(
         color: p.surface,
-        borderRadius: BorderRadius.circular(AppRadius.card),
+        borderRadius: BorderRadius.circular(AppRadius.hero),
         boxShadow: AppShadow.card,
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              height: 8,
-              color: p.brandTint,
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                key: const Key('search-progress-fill'),
-                widthFactor: value,
-                heightFactor: 1,
-                child: Container(
-                  color: p.brand,
-                  child: still
-                      ? null
-                      : LayoutBuilder(
-                          builder: (_, box) => AnimatedBuilder(
-                            animation: _shimmer,
-                            builder: (_, __) {
-                              final t = Curves.easeInOut.transform(_shimmer.value);
-                              final sw = box.maxWidth * .3;
-                              return Stack(clipBehavior: Clip.hardEdge, children: [
-                                Positioned(
-                                  left: -1.2 * sw + t * (box.maxWidth + 1.2 * sw),
-                                  top: 0,
-                                  bottom: 0,
-                                  width: sw,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(colors: [
-                                        _onBandWhite.withValues(alpha: 0),
-                                        _onBandWhite.withValues(alpha: .65),
-                                        _onBandWhite.withValues(alpha: 0),
-                                      ]),
-                                    ),
-                                  ),
-                                ),
-                              ]);
-                            },
-                          ),
-                        ),
-                ),
+          // Search icon that slowly circles, like it is scanning the area.
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: p.brandTint, shape: BoxShape.circle),
+              child: AnimatedBuilder(
+                animation: _scan,
+                builder: (_, child) {
+                  final a = _scan.value * 2 * math.pi;
+                  final o = still ? Offset.zero : Offset(math.cos(a) * 5, math.sin(a) * 5);
+                  return Transform.translate(offset: o, child: child);
+                },
+                child: Icon(Icons.search_rounded, size: 32, color: p.brandText),
               ),
             ),
           ),
           const SizedBox(height: 14),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            child: Text(
+              (widget.stage >= 3 ? 'Still searching for drivers nearby…' : 'Searching for drivers nearby…').tr,
+              key: ValueKey(widget.stage >= 3),
+              textAlign: TextAlign.center,
+              style: AppText.section(p.ink).copyWith(fontSize: 19),
+            ),
+          ),
+          const SizedBox(height: 6),
+          StageMessage(text: widget.message),
+          const SizedBox(height: 16),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _Step(label: 'Order placed'.tr, done: true)),
-              Expanded(child: _Step(label: 'Drivers notified'.tr, done: widget.notified, pop: true)),
-              Expanded(child: _Step(label: 'Driver accepts'.tr, done: false)),
+              for (var i = 0; i < fills.length; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: _segment(p, i, fills[i], shimmer: !still && i == active)),
+              ],
             ],
           ),
         ],
       ),
     );
   }
-}
 
-class _Step extends StatelessWidget {
-  const _Step({required this.label, required this.done, this.pop = false});
-  final String label;
-  final bool done;
-  final bool pop;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.current;
-    final still = _reduceMotion(context);
-    Widget dot = Container(
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: done ? p.brand : p.surface,
-        border: done ? null : Border.all(color: p.line, width: 2),
-      ),
-      child: done ? Icon(Icons.check_rounded, size: 14, color: p.onBrand) : null,
-    );
-    if (done && pop && !still) {
-      dot = TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0, end: 1),
-        duration: const Duration(milliseconds: 450),
-        builder: (_, t, child) {
-          final s = t < .7 ? .4 + (1.15 - .4) * (t / .7) : 1.15 - .15 * ((t - .7) / .3);
-          return Opacity(opacity: (t / .7).clamp(0.0, 1.0), child: Transform.scale(scale: s, child: child));
-        },
-        child: dot,
-      );
-    }
-    return Column(
-      children: [
-        dot,
-        const SizedBox(height: 6),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: AppText.caption(done ? p.ink : p.inkSubtle).copyWith(fontFamily: done ? 'Gilroy_Bold' : null),
+  Widget _segment(AppPalette p, int i, double fill, {required bool shimmer}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: Container(
+        height: 6,
+        color: p.brandTint,
+        alignment: Alignment.centerLeft,
+        child: TweenAnimationBuilder<double>(
+          // Smoothly glide to the new fill each second instead of jumping.
+          tween: Tween(end: fill),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOut,
+          builder: (_, f, __) => FractionallySizedBox(
+            key: Key('search-segment-$i'),
+            widthFactor: fill == 0 ? 0 : f,
+            heightFactor: 1,
+            child: Container(
+              color: p.brand,
+              child: !shimmer
+                  ? null
+                  : LayoutBuilder(
+                      builder: (_, box) => AnimatedBuilder(
+                        animation: _shimmer,
+                        builder: (_, __) {
+                          final t = Curves.easeInOut.transform(_shimmer.value);
+                          final sw = math.max(box.maxWidth * .5, 24.0);
+                          return Stack(clipBehavior: Clip.hardEdge, children: [
+                            Positioned(
+                              left: -sw + t * (box.maxWidth + sw),
+                              top: 0,
+                              bottom: 0,
+                              width: sw,
+                              child: const DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(colors: [
+                                    Color(0x00FFFFFF),
+                                    Color(0xA6FFFFFF),
+                                    Color(0x00FFFFFF),
+                                  ]),
+                                ),
+                              ),
+                            ),
+                          ]);
+                        },
+                      ),
+                    ),
+            ),
+          ),
         ),
-      ],
+      ),
     );
   }
 }
