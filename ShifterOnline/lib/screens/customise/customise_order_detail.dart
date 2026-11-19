@@ -4,11 +4,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_buttons.dart';
+import '../../theme/widgets/app_skeleton.dart';
+import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/route_marker.dart';
 import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import '../../utils/node_socket_manager.dart';
 import '../myorder/trackingway.dart';
 import 'customise_api.dart';
+import 'customise_ui.dart';
 
 /// One Customise Order: its details, the drivers' offers (accept or reject each) and cancel while it is still open.
 /// Refreshes by itself and as soon as the server pushes a new offer.
@@ -108,127 +114,233 @@ class _CustomiseOrderDetailState extends State<CustomiseOrderDetail> {
     await _load(silent: true);
   }
 
-  static const _statusText = {
-    'scheduled': 'Waiting for bargaining to start',
-    'open': 'Drivers can send offers',
-    'converted': 'Driver confirmed',
-    'expired': 'Expired, no driver was confirmed',
-    'cancelled': 'Cancelled',
-  };
 
-  Widget _line(String label, String? value) => (value == null || value.isEmpty || value == 'null')
-      ? const SizedBox.shrink()
-      : Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 120, child: Text(label, style: TextStyle(color: greaycolor, fontSize: 13))),
-            Expanded(child: Text(value, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 13))),
+  Widget _line(String label, String? value) {
+    final p = AppPalette.current;
+    if (value == null || value.isEmpty || value == 'null') return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 110, child: Text(label.tr, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13))),
+        Expanded(child: Text(value, style: AppText.body(p.ink).copyWith(fontSize: 13.5))),
+      ]),
+    );
+  }
+
+  Widget _place(Widget marker, String text) {
+    final p = AppPalette.current;
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        marker,
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, style: AppText.body(p.ink).copyWith(fontSize: 13.5, height: 1.35))),
+      ]),
+    );
+  }
+
+  Widget _offerTile(Map<String, dynamic> o, bool canDecide) {
+    final p = AppPalette.current;
+    final accepted = o['kind'] == 'accept';
+    final name = '${o['driver_name'] ?? 'Driver'}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        border: Border.all(color: accepted ? p.success : p.line, width: accepted ? 1.5 : 1),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: p.brandTint, shape: BoxShape.circle),
+            child: Text(name.isEmpty ? 'D' : name[0].toUpperCase(), style: AppText.bodyStrong(p.brandText)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.bodyStrong(p.ink)),
+              if (o['vehicle'] != null) Text('${o['vehicle']}', style: AppText.caption(p.inkMuted)),
+            ]),
+          ),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('₹${o['amount']}', style: AppText.title(p.ink).copyWith(fontSize: 20)),
+            Text((accepted ? 'Accepted your price' : 'Counter offer').tr,
+                style: AppText.caption(accepted ? p.successText : p.brandText).copyWith(fontFamily: 'Gilroy_Bold')),
           ]),
-        );
-
-  Widget _box(String title, List<Widget> children) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: notifier.getContainer, borderRadius: BorderRadius.circular(14)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 15)),
-          const SizedBox(height: 8),
-          ...children,
         ]),
-      );
-
-  Widget _offerTile(Map<String, dynamic> o, bool canDecide) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(border: Border.all(color: linercolor.withOpacity(0.4)), borderRadius: BorderRadius.circular(12)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Text('${o['driver_name'] ?? 'Driver'}${o['vehicle'] != null ? '  ·  ${o['vehicle']}' : ''}',
-                  style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')),
-            ),
-            Text('₹${o['amount']}', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18)),
-          ]),
-          Text(o['kind'] == 'accept' ? 'Accepted your price' : 'Counter offer', style: TextStyle(color: greaycolor, fontSize: 12)),
-          if (canDecide)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(children: [
-                Expanded(child: OutlinedButton(onPressed: _busy ? null : () => _decide(o, false), child: const Text('Reject'))),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: linercolor),
-                    onPressed: _busy ? null : () => _decide(o, true),
-                    child: const Text('Accept', style: TextStyle(color: Colors.white)),
+        if (canDecide)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: p.ink,
+                    side: BorderSide(color: p.line),
+                    minimumSize: const Size(0, 46),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.input)),
                   ),
+                  onPressed: _busy ? null : () => _decide(o, false),
+                  child: Text('Reject'.tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
                 ),
-              ]),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: AppPrimaryButton(
+                  label: '${'Accept'.tr} ₹${o['amount']}',
+                  onPressed: _busy ? null : () => _decide(o, true),
+                ),
+              ),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  Widget _statusHero(String status, Map<String, dynamic>? o) {
+    final p = AppPalette.current;
+    final (fg, bg) = CustomiseStatus.colors(status);
+    final info = CustomiseStatus.of(status);
+    final agreed = o?['agreed_fare'];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: p.surface, borderRadius: BorderRadius.circular(AppRadius.card), boxShadow: AppShadow.card),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+            child: Icon(
+              status == 'converted'
+                  ? Icons.check_circle_rounded
+                  : status == 'open'
+                      ? Icons.campaign_rounded
+                      : status == 'scheduled'
+                          ? Icons.schedule_rounded
+                          : Icons.block_rounded,
+              color: fg,
+              size: 24,
             ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(info.label.tr, style: AppText.section(p.ink)),
+              if (info.hint.isNotEmpty) Text(info.hint.tr, style: AppText.caption(p.inkMuted).copyWith(fontSize: 12.5)),
+            ]),
+          ),
         ]),
-      );
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Your price'.tr, style: AppText.caption(p.inkMuted)),
+              Text('₹${o?['initial_fare']}', style: AppText.title(p.ink).copyWith(fontSize: 22)),
+            ]),
+          ),
+          if (agreed != null && '$agreed' != 'null')
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text('Agreed price'.tr, style: AppText.caption(p.inkMuted)),
+              Text('₹$agreed', style: AppText.title(p.successText).copyWith(fontSize: 22)),
+            ]),
+        ]),
+        const SizedBox(height: 8),
+        _line('Offers open from', _when(o?['bargain_start_at'])),
+        _line('Offers close at', _when(o?['expires_at'])),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final p = AppPalette.current;
     final o = _order;
     final status = o?['status']?.toString() ?? '';
     final live = status == 'open' || status == 'scheduled';
     final goods = (o?['goods'] as Map?) ?? {};
     final stops = (o?['stops'] as List?) ?? [];
+    final pickup = (o?['pickup'] as Map?) ?? {};
     return Scaffold(
-      backgroundColor: linercolor,
-      appBar: AppBar(
-        backgroundColor: linercolor,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Get.back()),
-        title: Text('Customise Order #${widget.orderId}', style: const TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 18)),
-      ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(color: notifier.lightBgColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24))),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null && o == null
-                ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: notifier.text))))
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView(padding: const EdgeInsets.all(16), children: [
-                      _box('Status', [
-                        _line('Status', _statusText[status] ?? status),
-                        _line('Your price', '₹${o?['initial_fare']}'),
-                        _line('Agreed price', o?['agreed_fare'] != null ? '₹${o?['agreed_fare']}' : null),
-                        _line('Bargaining starts', _when(o?['bargain_start_at'])),
-                        _line('Offers close', _when(o?['expires_at'])),
-                      ]),
-                      _box('Offers (${_offers.length})', [
-                        if (_offers.isEmpty)
-                          Text(live ? 'No offers yet. Drivers will appear here as they respond.' : 'No offers.', style: TextStyle(color: greaycolor)),
-                        for (final f in _offers) _offerTile(f, status == 'open'),
-                      ]),
-                      _box('Route', [
-                        _line('Pickup', '${(o?['pickup'] as Map?)?['address'] ?? ''}${(o?['pickup'] as Map?)?['exact'] == false ? ' (approximate)' : ''}'),
-                        for (final s in stops) _line('Stop ${s['seq']}', '${s['address']}'),
-                        _line('Drop', '${(o?['drop'] as Map?)?['address'] ?? ''}'),
-                      ]),
-                      _box('Goods', [
-                        _line('Goods', '${goods['description'] ?? ''}'),
-                        _line('Items', '${goods['quantity'] ?? ''}'),
-                        _line('Weight', '${goods['weight_kg'] ?? ''} kg'),
-                        _line('Vehicle', o?['category']?.toString() ?? 'Any vehicle'),
-                      ]),
-                      if (live)
-                        OutlinedButton(
-                          style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red)),
-                          onPressed: _cancel,
-                          child: const Text('Cancel order'),
-                        ),
-                    ]),
+      backgroundColor: p.canvas,
+      appBar: AppTopBar(title: 'Customise Order'.tr, subtitle: '${'Order'.tr} #${widget.orderId}'),
+      bottomNavigationBar: live && o != null
+          ? Material(
+              color: p.surface,
+              child: SafeArea(
+                top: false,
+                child: Center(
+                  heightFactor: 1,
+                  child: TextButton(
+                    style: TextButton.styleFrom(foregroundColor: p.danger, minimumSize: const Size(160, 48)),
+                    onPressed: _cancel,
+                    child: Text('Cancel order'.tr, style: AppText.bodyStrong(p.danger).copyWith(fontSize: 14)),
                   ),
-      ),
+                ),
+              ),
+            )
+          : null,
+      body: _loading
+          ? ListView(padding: const EdgeInsets.all(16), children: const [
+              AppSkeleton(height: 170, radius: 16),
+              SizedBox(height: 12),
+              AppSkeleton(height: 120, radius: 16),
+            ])
+          : _error != null && o == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_error!, textAlign: TextAlign.center, style: AppText.body(p.inkMuted)),
+                  ),
+                )
+              : RefreshIndicator(
+                  color: p.brand,
+                  onRefresh: _load,
+                  child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), children: [
+                    _statusHero(status, o),
+                    CustomiseSection(
+                      title: '${'Offers'.tr} (${_offers.length})',
+                      subtitle: status == 'open' ? 'Accept the one you like. It becomes a normal ride at that price' : null,
+                      children: [
+                        if (_offers.isEmpty)
+                          Row(children: [
+                            if (live) ...[
+                              SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.brand)),
+                              const SizedBox(width: 12),
+                            ],
+                            Expanded(
+                              child: Text(
+                                (live ? 'No offers yet. Drivers will appear here as they respond.' : 'No offers.').tr,
+                                style: AppText.body(p.inkMuted).copyWith(fontSize: 13.5),
+                              ),
+                            ),
+                          ]),
+                        for (final f in _offers) _offerTile(f, status == 'open'),
+                      ],
+                    ),
+                    CustomiseSection(title: 'Route', children: [
+                      _place(const RouteMarker.pickup(size: 20),
+                          '${pickup['address'] ?? ''}${pickup['exact'] == false ? ' (${'approximate'.tr})' : ''}'),
+                      for (final s in stops) _place(RouteMarker.stop(int.tryParse('${s['seq']}') ?? 1, size: 20), '${s['address']}'),
+                      _place(const RouteMarker.drop(size: 20), '${(o?['drop'] as Map?)?['address'] ?? ''}'),
+                    ]),
+                    CustomiseSection(title: 'Goods', children: [
+                      _line('Goods', '${goods['description'] ?? ''}'),
+                      _line('Items', '${goods['quantity'] ?? ''}'),
+                      _line('Weight', goods['weight_kg'] == null ? null : '${goods['weight_kg']} kg'),
+                      _line('Vehicle', o?['category']?.toString() ?? 'Any vehicle'.tr),
+                    ]),
+                  ]),
+                ),
     );
   }
 

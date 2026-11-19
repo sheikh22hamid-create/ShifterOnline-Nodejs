@@ -1,12 +1,18 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_buttons.dart';
+import '../../theme/widgets/app_skeleton.dart';
+import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/route_marker.dart';
+import '../../theme/widgets/v2_art.dart';
 import '../../utils/colors.dart';
 import 'customise_api.dart';
 import 'customise_order_detail.dart';
 import 'customise_order_form.dart';
+import 'customise_ui.dart';
 
 /// Entry point of the Customise Order feature: the customer's own orders, and a button to post a new one.
 class MyCustomiseOrders extends StatefulWidget {
@@ -46,79 +52,153 @@ class _MyCustomiseOrdersState extends State<MyCustomiseOrders> {
     if (mounted) _load();
   }
 
-  Color _tone(String s) => s == 'converted' ? Colors.green : (s == 'open' ? linercolor : (s == 'scheduled' ? Colors.blueGrey : Colors.red));
+  Widget _orderCard(Map<String, dynamic> o) {
+    final p = AppPalette.current;
+    final status = '${o['status']}';
+    final offers = int.tryParse('${o['offer_count']}') ?? 0;
+    final goods = '${o['goods_desc'] ?? ''}'.trim();
+    Widget place(Widget marker, String text) => Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            marker,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.body(p.ink).copyWith(fontSize: 13.5)),
+            ),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          onTap: () => _open(CustomiseOrderDetail(orderId: int.tryParse('${o['order_id']}') ?? 0)),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(AppRadius.card), boxShadow: AppShadow.card, color: p.surface),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(goods.isEmpty ? '${'Order'.tr} #${o['order_id']}' : goods,
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.bodyStrong(p.ink)),
+                        Text('${'Order'.tr} #${o['order_id']}', style: AppText.caption(p.inkSubtle)),
+                      ],
+                    ),
+                  ),
+                  CustomiseStatusChip(status),
+                ]),
+                place(const RouteMarker.pickup(size: 18), '${o['pickup_address'] ?? ''}'),
+                place(const RouteMarker.drop(size: 18), '${o['drop_address'] ?? ''}'),
+                const SizedBox(height: 12),
+                Divider(height: 1, color: p.divider),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Text('Your price'.tr, style: AppText.caption(p.inkMuted).copyWith(fontSize: 13)),
+                  const SizedBox(width: 6),
+                  Text('₹${o['initial_fare']}', style: AppText.bodyStrong(p.ink)),
+                  const Spacer(),
+                  if (offers > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: p.brand, borderRadius: BorderRadius.circular(20)),
+                      child: Text('$offers ${(offers == 1 ? 'offer' : 'offers').tr}',
+                          style: AppText.caption(p.onBrand).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 12)),
+                    )
+                  else
+                    Text('No offers yet'.tr, style: AppText.caption(p.inkSubtle)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.chevron_right_rounded, size: 20, color: p.inkSubtle),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _empty() {
+    final p = AppPalette.current;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 120),
+      children: [
+        const Center(child: V2Art(asset: 'assets/v2/tile_customise.png', placeholderLabel: 'T4', width: 200, height: 133)),
+        const SizedBox(height: 12),
+        Text('Name your own price'.tr, textAlign: TextAlign.center, style: AppText.title(p.ink)),
+        const SizedBox(height: 6),
+        Text('Tell drivers what you want to pay. They accept it or offer their own price.'.tr,
+            textAlign: TextAlign.center, style: AppText.body(p.inkMuted).copyWith(fontSize: 14, height: 1.4)),
+        const SizedBox(height: 20),
+        const CustomiseHowItWorks(),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final p = AppPalette.current;
     return Scaffold(
-      backgroundColor: linercolor,
-      appBar: AppBar(
-        backgroundColor: linercolor,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Get.back()),
-        title: const Text('Customise Orders', style: TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 18)),
-      ),
-      floatingActionButton: _error == null
-          ? FloatingActionButton.extended(
-              backgroundColor: linercolor,
-              onPressed: () => _open(const CustomiseOrderForm()),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('New order', style: TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold')),
+      backgroundColor: p.canvas,
+      appBar: AppTopBar(title: 'Customise Orders'.tr, subtitle: 'Offer your own fare'.tr),
+      bottomNavigationBar: _error == null && !_loading
+          ? Material(
+              color: p.surface,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                  child: AppPrimaryButton(
+                    label: '+  ${'New Customise Order'.tr}',
+                    onPressed: () => _open(const CustomiseOrderForm()),
+                  ),
+                ),
+              ),
             )
           : null,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(color: notifier.lightBgColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24))),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium'))))
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: _orders.isEmpty
-                        ? ListView(children: [
-                            const SizedBox(height: 120),
-                            Center(child: Text('No Customise Orders yet.\nTap "New order" to name your price.', textAlign: TextAlign.center, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium'))),
-                          ])
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-                            itemCount: _orders.length,
-                            itemBuilder: (_, i) {
-                              final o = _orders[i];
-                              final status = '${o['status']}';
-                              return InkWell(
-                                onTap: () => _open(CustomiseOrderDetail(orderId: int.tryParse('${o['order_id']}') ?? 0)),
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(color: notifier.getContainer, borderRadius: BorderRadius.circular(14)),
-                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Row(children: [
-                                      Expanded(child: Text('#${o['order_id']}  ${o['goods_desc']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold'))),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(color: _tone(status).withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-                                        child: Text(status, style: TextStyle(color: _tone(status), fontSize: 12, fontFamily: 'Gilroy_Bold')),
-                                      ),
-                                    ]),
-                                    const SizedBox(height: 6),
-                                    Text('${o['pickup_address']}  →  ${o['drop_address']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: greaycolor, fontSize: 12)),
-                                    const SizedBox(height: 8),
-                                    Row(children: [
-                                      Text('Your price ₹${o['initial_fare']}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium')),
-                                      const Spacer(),
-                                      Text('${o['offer_count']} offer(s)', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold')),
-                                    ]),
-                                  ]),
-                                ),
-                              );
-                            },
-                          ),
+      body: _loading
+          ? ListView(padding: const EdgeInsets.all(16), children: const [
+              AppSkeleton(height: 150, radius: 16),
+              SizedBox(height: 12),
+              AppSkeleton(height: 150, radius: 16),
+            ])
+          : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.cloud_off_rounded, size: 40, color: p.inkSubtle),
+                      const SizedBox(height: 10),
+                      Text(_error!, textAlign: TextAlign.center, style: AppText.body(p.inkMuted)),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () {
+                          setState(() => _loading = true);
+                          _load();
+                        },
+                        child: Text('Try again'.tr, style: AppText.bodyStrong(p.brandText)),
+                      ),
+                    ]),
                   ),
-      ),
+                )
+              : RefreshIndicator(
+                  color: p.brand,
+                  onRefresh: _load,
+                  child: _orders.isEmpty
+                      ? _empty()
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                          itemCount: _orders.length,
+                          itemBuilder: (_, i) => _orderCard(_orders[i]),
+                        ),
+                ),
     );
   }
 }

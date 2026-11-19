@@ -14,6 +14,9 @@ const _swept = <String>[
   'lib/screens/home/widgets/finding_driver_widgets.dart',
   'lib/screens/home/widgets/home_recent_places.dart',
   'lib/screens/home/widgets/feature_intro_sheet.dart',
+  'lib/screens/customise/customise_ui.dart',
+  'lib/screens/customise/my_customise_orders.dart',
+  'lib/screens/customise/customise_order_detail.dart',
 ];
 
 void main() {

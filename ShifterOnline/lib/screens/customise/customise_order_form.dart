@@ -1,15 +1,19 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import '../../theme/app_tokens.dart';
+import '../../theme/widgets/app_buttons.dart';
+import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/route_marker.dart';
 import '../../utils/colors.dart';
 import '../../utils/customewidget/customwidgets.dart';
 import '../home/home.dart'; // pickupiteam: the vehicle categories already loaded for the home screen
 import '../home/location_search_screen.dart';
 import 'customise_api.dart';
 import 'customise_order_detail.dart';
+import 'customise_ui.dart';
 
 class _Place {
   _Place(this.address, this.lat, this.lng);
@@ -91,6 +95,11 @@ class _CustomiseOrderFormState extends State<CustomiseOrderForm> {
     final now = DateTime.now();
     _start = now.add(const Duration(minutes: 10));
     _expiry = _start.add(const Duration(hours: 3));
+    _fare.addListener(_onFareChanged);
+  }
+
+  void _onFareChanged() {
+    if (mounted) setState(() {}); // the bottom button shows the price as it is typed
   }
 
   @override
@@ -227,197 +236,298 @@ class _CustomiseOrderFormState extends State<CustomiseOrderForm> {
 
   // --- small widgets ----------------------------------------------------------------------------------------------
 
-  Widget _card(String title, List<Widget> children) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 14),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: notifier.getContainer, borderRadius: BorderRadius.circular(14)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 15)),
-          const SizedBox(height: 10),
-          ...children,
-        ]),
-      );
+  Widget _row2(Widget a, Widget b) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]);
 
-  Widget _input(String label, TextEditingController c, {bool number = false, bool decimal = false, int lines = 1, String? hint}) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: TextField(
-          controller: c,
-          maxLines: lines,
-          keyboardType: number ? (decimal ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.number) : TextInputType.text,
-          inputFormatters: number ? [FilteringTextInputFormatter.allow(RegExp(decimal ? r'[0-9.]' : r'[0-9]'))] : null,
-          style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium'),
-          decoration: InputDecoration(labelText: label, hintText: hint, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), isDense: true),
+  Widget _timeTile(String label, DateTime value, ValueChanged<DateTime> onPicked) {
+    final p = AppPalette.current;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: p.canvas,
+        borderRadius: BorderRadius.circular(AppRadius.input),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadius.input),
+          onTap: () async {
+            final picked = await _pickDateTime(value);
+            if (picked != null) setState(() => onPicked(picked));
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            child: Row(children: [
+              Icon(Icons.schedule_rounded, size: 20, color: p.brandText),
+              const SizedBox(width: 10),
+              Expanded(child: Text(label.tr, style: AppText.body(p.inkMuted).copyWith(fontSize: 14))),
+              Text(_show(value), style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
+              const SizedBox(width: 4),
+              Icon(Icons.edit_outlined, size: 16, color: p.inkSubtle),
+            ]),
+          ),
         ),
-      );
+      ),
+    );
+  }
 
-  Widget _row2(Widget a, Widget b) => Row(children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]);
+  Widget _chip(String label, bool selected, VoidCallback onTap) {
+    final p = AppPalette.current;
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      selectedColor: p.brandTint,
+      labelStyle: AppText.bodyStrong(selected ? p.brandText : p.ink).copyWith(fontSize: 13),
+      side: BorderSide(color: selected ? p.brand : p.line),
+      backgroundColor: p.surface,
+      showCheckmark: false,
+      onSelected: (_) => onTap(),
+    );
+  }
 
-  Widget _placeTile(String label, _Place? place, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(border: Border.all(color: greaycolor.withOpacity(0.4)), borderRadius: BorderRadius.circular(10)),
-          child: Text(place?.address ?? label, style: TextStyle(color: place == null ? greaycolor : notifier.text, fontFamily: 'Gilroy_Medium')),
-        ),
-      );
-
-  Widget _timeTile(String label, DateTime value, ValueChanged<DateTime> onPicked) => InkWell(
-        onTap: () async {
-          final picked = await _pickDateTime(value);
-          if (picked != null) setState(() => onPicked(picked));
-        },
-        child: Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(border: Border.all(color: greaycolor.withOpacity(0.4)), borderRadius: BorderRadius.circular(10)),
-          child: Row(children: [
-            Icon(Icons.schedule, size: 18, color: linercolor),
-            const SizedBox(width: 8),
-            Expanded(child: Text(label, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium'))),
-            Text(_show(value), style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold')),
-          ]),
-        ),
-      );
+  /// Quick "keep offers open for…" choices; the exact close time can still be picked above.
+  Widget _windowChips() {
+    final current = _expiry.difference(_start).inMinutes;
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final h in const [1, 3, 6, 12])
+        _chip('$h ${(h == 1 ? 'hour' : 'hours').tr}', current == h * 60,
+            () => setState(() => _expiry = _start.add(Duration(hours: h)))),
+    ]);
+  }
 
   Widget _stopCard(int index) {
+    final p = AppPalette.current;
     final s = _stops[index];
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(border: Border.all(color: linercolor.withOpacity(0.4)), borderRadius: BorderRadius.circular(12)),
+      padding: const EdgeInsets.fromLTRB(12, 4, 4, 12),
+      decoration: BoxDecoration(border: Border.all(color: p.line), borderRadius: BorderRadius.circular(AppRadius.input)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Expanded(child: Text('Stop ${index + 1}', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold'))),
+          Expanded(child: Text('${'Stop'.tr} ${index + 1}', style: AppText.bodyStrong(p.ink))),
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'Remove stop'.tr,
+            icon: Icon(Icons.delete_outline_rounded, color: p.danger),
             onPressed: () => setState(() => _stops.removeAt(index).dispose()),
           ),
         ]),
-        _placeTile('Choose stop location', s.place, () async {
-          final p = await _pickPlace('Stop', stopIndex: index);
-          if (p != null) setState(() => s.place = p);
-        }),
-        Wrap(spacing: 8, children: [
-          for (final k in const [['pickup', 'Pick up here'], ['drop', 'Drop here'], ['both', 'Both']])
-            ChoiceChip(label: Text(k[1]), selected: s.kind == k[0], onSelected: (_) => setState(() => s.kind = k[0])),
-        ]),
-        const SizedBox(height: 10),
-        _input('Goods at this stop', s.goods),
-        _row2(_input('Floor', s.floor, number: true), _input('Carry distance (m)', s.carry, number: true)),
-        _row2(_input('Helpers', s.helpers, number: true), _input('Loading (min)', s.loadMin, number: true)),
-        _row2(_input('Unloading (min)', s.unloadMin, number: true), _input('Waiting (min)', s.waitMin, number: true)),
-        _input('Notes for this stop', s.notes, lines: 2),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            CustomisePlaceTile(
+              marker: RouteMarker.stop(index + 1, size: 22),
+              placeholder: 'Choose stop location',
+              address: s.place?.address,
+              onTap: () async {
+                final picked = await _pickPlace('Stop', stopIndex: index);
+                if (picked != null) setState(() => s.place = picked);
+              },
+            ),
+            Wrap(spacing: 8, children: [
+              for (final k in const [['pickup', 'Pick up here'], ['drop', 'Drop here'], ['both', 'Both']])
+                _chip(k[1].tr, s.kind == k[0], () => setState(() => s.kind = k[0])),
+            ]),
+            const SizedBox(height: 10),
+            CustomiseField(label: 'Goods at this stop', controller: s.goods),
+            CustomiseMore(
+              title: 'Stop details',
+              subtitle: 'Floor, helpers, time and notes (optional)',
+              children: [
+                _row2(CustomiseField(label: 'Floor', controller: s.floor, number: true),
+                    CustomiseField(label: 'Carry distance (m)', controller: s.carry, number: true)),
+                _row2(CustomiseField(label: 'Helpers', controller: s.helpers, number: true),
+                    CustomiseField(label: 'Loading (min)', controller: s.loadMin, number: true)),
+                _row2(CustomiseField(label: 'Unloading (min)', controller: s.unloadMin, number: true),
+                    CustomiseField(label: 'Waiting (min)', controller: s.waitMin, number: true)),
+                CustomiseField(label: 'Notes for this stop', controller: s.notes, lines: 2),
+              ],
+            ),
+          ]),
+        ),
       ]),
     );
+  }
+
+  String? get _categoryName {
+    if (_categoryId == null) return null;
+    for (final c in _categories) {
+      if (int.tryParse('${c['id']}') == _categoryId) return '${c['cat_name']}';
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
+    final p = AppPalette.current;
     final cats = _categories;
+    final fare = double.tryParse(_fare.text.trim());
+    final inputBorder =
+        OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.input), borderSide: BorderSide(color: p.line));
     return Scaffold(
-      backgroundColor: linercolor,
-      appBar: AppBar(
-        backgroundColor: linercolor,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white), onPressed: () => Get.back()),
-        title: const Text('Customise Order', style: TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 18)),
+      backgroundColor: p.canvas,
+      appBar: AppTopBar(title: 'New Customise Order'.tr, subtitle: 'Name your price, drivers respond'.tr),
+      bottomNavigationBar: Material(
+        color: p.surface,
+        elevation: 8,
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: _saving
+                ? SizedBox(height: 52, child: Center(child: CircularProgressIndicator(color: p.brand)))
+                : AppPrimaryButton(
+                    label: 'Post order'.tr,
+                    trailing: fare != null && fare > 0 ? '₹${_fare.text.trim()}' : null,
+                    onPressed: _submit,
+                  ),
+          ),
+        ),
       ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: BoxDecoration(color: notifier.lightBgColor, borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24))),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 28),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _card('Route', [
-              _placeTile('Choose pickup location', _pickup, () async {
-                final p = await _pickPlace('Pickup');
-                if (p != null) setState(() => _pickup = p);
-              }),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Pickup point is exact', style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium')),
-                subtitle: Text(_pickupExact ? 'The driver goes to this exact spot.' : 'Approximate: you will confirm the exact spot with the driver.', style: TextStyle(color: greaycolor, fontSize: 12)),
-                value: _pickupExact,
-                activeColor: linercolor,
-                onChanged: (v) => setState(() => _pickupExact = v),
-              ),
-              for (var i = 0; i < _stops.length; i++) _stopCard(i),
-              TextButton.icon(
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, MediaQuery.of(context).viewInsets.bottom + 24),
+        children: [
+          // 1. Route
+          CustomiseSection(step: 1, title: 'Where', subtitle: 'Pickup, drop and any stops on the way', children: [
+            CustomisePlaceTile(
+              marker: const RouteMarker.pickup(size: 22),
+              placeholder: 'Choose pickup location',
+              address: _pickup?.address,
+              onTap: () async {
+                final picked = await _pickPlace('Pickup');
+                if (picked != null) setState(() => _pickup = picked);
+              },
+            ),
+            SwitchListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('Pickup point is exact'.tr, style: AppText.body(p.ink).copyWith(fontSize: 14)),
+              subtitle: Text(
+                  (_pickupExact
+                          ? 'The driver goes to this exact spot.'
+                          : 'Approximate: you will confirm the exact spot with the driver.')
+                      .tr,
+                  style: AppText.caption(p.inkMuted)),
+              value: _pickupExact,
+              activeColor: p.brand,
+              onChanged: (v) => setState(() => _pickupExact = v),
+            ),
+            for (var i = 0; i < _stops.length; i++) _stopCard(i),
+            CustomisePlaceTile(
+              marker: const RouteMarker.drop(size: 22),
+              placeholder: 'Choose drop location',
+              address: _drop?.address,
+              onTap: () async {
+                final picked = await _pickPlace('Drop');
+                if (picked != null) setState(() => _drop = picked);
+              },
+            ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
                 onPressed: _stops.length >= 5 ? null : () => setState(() => _stops.add(_StopDraft())),
-                icon: const Icon(Icons.add_location_alt_outlined),
-                label: const Text('Add a stop'),
-              ),
-              _placeTile('Choose drop location', _drop, () async {
-                final p = await _pickPlace('Drop');
-                if (p != null) setState(() => _drop = p);
-              }),
-            ]),
-            _card('Goods', [
-              _input('What are you moving?', _goodsDesc, lines: 2, hint: 'e.g. 2 sofas and a dining table'),
-              _row2(_input('Number of items', _qty, number: true), _input('Total weight (kg)', _weight, number: true, decimal: true)),
-              Text('Size of the largest item (optional)', style: TextStyle(color: greaycolor, fontSize: 12)),
-              const SizedBox(height: 6),
-              Row(children: [
-                Expanded(child: _input('Length cm', _len, number: true, decimal: true)),
-                const SizedBox(width: 8),
-                Expanded(child: _input('Width cm', _wid, number: true, decimal: true)),
-                const SizedBox(width: 8),
-                Expanded(child: _input('Height cm', _hgt, number: true, decimal: true)),
-              ]),
-              _input('Packing and handling needs', _packing, lines: 2, hint: 'Fragile, needs wrapping, keep upright…'),
-            ]),
-            _card('At pickup', [
-              _row2(_input('Floor', _pFloor, number: true), _input('Carry distance (m)', _pCarry, number: true)),
-              _row2(_input('Helpers needed', _pHelpers, number: true), _input('Loading time (min)', _pLoad, number: true)),
-              _input('Waiting time (min)', _pWait, number: true),
-              _input('Loading instructions', _pNotes, lines: 2),
-            ]),
-            _card('At drop', [
-              _row2(_input('Floor', _dFloor, number: true), _input('Carry distance (m)', _dCarry, number: true)),
-              _row2(_input('Helpers needed', _dHelpers, number: true), _input('Unloading time (min)', _dUnload, number: true)),
-              _input('Waiting time (min)', _dWait, number: true),
-              _input('Unloading instructions', _dNotes, lines: 2),
-            ]),
-            _card('Vehicle (optional)', [
-              DropdownButtonFormField<int?>(
-                value: _categoryId,
-                isExpanded: true,
-                decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), isDense: true),
-                items: [
-                  const DropdownMenuItem<int?>(value: null, child: Text('Any vehicle')),
-                  for (final c in cats) DropdownMenuItem<int?>(value: int.tryParse('${c['id']}'), child: Text('${c['cat_name']}')),
-                ],
-                onChanged: (v) => setState(() => _categoryId = v),
-              ),
-              const SizedBox(height: 6),
-              Text('Drivers are still checked against the weight and size of your goods.', style: TextStyle(color: greaycolor, fontSize: 12)),
-            ]),
-            _card('Your price and timing', [
-              _input('Your offered price (₹)', _fare, number: true, decimal: true),
-              _timeTile('Bargaining starts', _start, (v) => _start = v),
-              _timeTile('Offers close (expiry)', _expiry, (v) => _expiry = v),
-              Text('Drivers can accept your price or send their own until the expiry time.', style: TextStyle(color: greaycolor, fontSize: 12)),
-            ]),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: linercolor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                onPressed: _saving ? null : _submit,
-                child: _saving
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Post Customise Order', style: TextStyle(color: Colors.white, fontFamily: 'Gilroy_Bold', fontSize: 16)),
+                icon: Icon(Icons.add_location_alt_outlined, color: _stops.length >= 5 ? p.inkSubtle : p.brandText),
+                label: Text('Add a stop'.tr,
+                    style: AppText.bodyStrong(_stops.length >= 5 ? p.inkSubtle : p.brandText).copyWith(fontSize: 14)),
               ),
             ),
           ]),
-        ),
+
+          // 2. Goods
+          CustomiseSection(step: 2, title: 'What are you moving?', subtitle: 'Helps drivers come with the right vehicle', children: [
+            CustomiseField(label: 'Goods', controller: _goodsDesc, lines: 2, hint: 'e.g. 2 sofas and a dining table'),
+            _row2(CustomiseField(label: 'Number of items', controller: _qty, number: true),
+                CustomiseField(label: 'Total weight (kg)', controller: _weight, number: true, decimal: true)),
+            CustomiseMore(
+              icon: Icons.straighten_rounded,
+              title: 'Size and packing',
+              subtitle: 'Optional',
+              children: [
+                Text('Size of the largest item'.tr, style: AppText.caption(p.inkMuted)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: CustomiseField(label: 'Length cm', controller: _len, number: true, decimal: true)),
+                  const SizedBox(width: 8),
+                  Expanded(child: CustomiseField(label: 'Width cm', controller: _wid, number: true, decimal: true)),
+                  const SizedBox(width: 8),
+                  Expanded(child: CustomiseField(label: 'Height cm', controller: _hgt, number: true, decimal: true)),
+                ]),
+                CustomiseField(
+                    label: 'Packing and handling needs', controller: _packing, lines: 2, hint: 'Fragile, needs wrapping, keep upright…'),
+              ],
+            ),
+            CustomiseMore(
+              icon: Icons.local_shipping_outlined,
+              title: 'Vehicle',
+              subtitle: _categoryName ?? 'Any vehicle',
+              children: [
+                DropdownButtonFormField<int?>(
+                  value: _categoryId,
+                  isExpanded: true,
+                  dropdownColor: p.surface,
+                  style: AppText.body(p.ink).copyWith(fontSize: 14),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: p.surface,
+                    isDense: true,
+                    border: inputBorder,
+                    enabledBorder: inputBorder,
+                  ),
+                  items: [
+                    DropdownMenuItem<int?>(value: null, child: Text('Any vehicle'.tr)),
+                    for (final c in cats) DropdownMenuItem<int?>(value: int.tryParse('${c['id']}'), child: Text('${c['cat_name']}')),
+                  ],
+                  onChanged: (v) => setState(() => _categoryId = v),
+                ),
+                const SizedBox(height: 6),
+                Text('Drivers are still checked against the weight and size of your goods.'.tr, style: AppText.caption(p.inkMuted)),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ]),
+
+          // 3. Price and timing
+          CustomiseSection(step: 3, title: 'Your price', subtitle: 'Drivers can accept it or send you their own price', children: [
+            CustomiseField(label: 'Price you want to pay', controller: _fare, number: true, decimal: true, prefix: '₹ ', big: true),
+            _timeTile('Offers open from', _start, (v) => _start = v),
+            _timeTile('Offers close at', _expiry, (v) => _expiry = v),
+            Text('Keep offers open for'.tr, style: AppText.caption(p.inkMuted)),
+            const SizedBox(height: 8),
+            _windowChips(),
+          ]),
+
+          // Optional handling
+          CustomiseSection(
+            title: 'Extra help (optional)',
+            subtitle: 'Floors, helpers and waiting time. Leave as it is if not needed',
+            children: [
+              CustomiseMore(
+                icon: Icons.north_east_rounded,
+                title: 'At pickup',
+                subtitle: 'Floor, helpers, loading time',
+                children: [
+                  _row2(CustomiseField(label: 'Floor', controller: _pFloor, number: true),
+                      CustomiseField(label: 'Carry distance (m)', controller: _pCarry, number: true)),
+                  _row2(CustomiseField(label: 'Helpers needed', controller: _pHelpers, number: true),
+                      CustomiseField(label: 'Loading time (min)', controller: _pLoad, number: true)),
+                  CustomiseField(label: 'Waiting time (min)', controller: _pWait, number: true),
+                  CustomiseField(label: 'Loading instructions', controller: _pNotes, lines: 2),
+                ],
+              ),
+              CustomiseMore(
+                icon: Icons.south_east_rounded,
+                title: 'At drop',
+                subtitle: 'Floor, helpers, unloading time',
+                children: [
+                  _row2(CustomiseField(label: 'Floor', controller: _dFloor, number: true),
+                      CustomiseField(label: 'Carry distance (m)', controller: _dCarry, number: true)),
+                  _row2(CustomiseField(label: 'Helpers needed', controller: _dHelpers, number: true),
+                      CustomiseField(label: 'Unloading time (min)', controller: _dUnload, number: true)),
+                  CustomiseField(label: 'Waiting time (min)', controller: _dWait, number: true),
+                  CustomiseField(label: 'Unloading instructions', controller: _dNotes, lines: 2),
+                ],
+              ),
+            ],
+          ),
+          const CustomiseHowItWorks(),
+        ],
       ),
     );
   }
