@@ -424,7 +424,8 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
       value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
       child: Scaffold(
         backgroundColor: p.canvas,
-        bottomNavigationBar: !_isLoadingPlans && _plans.isNotEmpty
+        // No buy button when every plan is the customer's current one (nothing to choose).
+        bottomNavigationBar: !_isLoadingPlans && _plans.any((plan) => plan['is_active'] != true)
             ? Material(
                 color: p.surface,
                 elevation: 8,
@@ -646,6 +647,8 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
                         ),
                         if (isActive)
                           Container(
+                            // Below the "Popular" corner tag, never under it.
+                            margin: EdgeInsets.only(top: isPopular ? 18 : 0),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(color: p.successTint, borderRadius: BorderRadius.circular(20)),
                             child: Text("Current".tr,
@@ -656,7 +659,7 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
                             duration: const Duration(milliseconds: 200),
                             height: 24,
                             width: 24,
-                            margin: EdgeInsets.only(top: isPopular ? 14 : 0),
+                            margin: EdgeInsets.only(top: isPopular ? 18 : 0),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: isSelected ? p.brand : Colors.transparent,
