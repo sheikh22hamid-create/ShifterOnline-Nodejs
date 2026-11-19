@@ -46,6 +46,7 @@ import 'widgets/home_header.dart';
 import 'widgets/home_pickup_card.dart';
 import 'widgets/home_service_tiles.dart';
 import 'widgets/home_active_order_strip.dart';
+import 'widgets/home_recent_places.dart';
 import 'package:goParcel/screens/home/wallet_page.dart';
 import 'package:goParcel/services/wallet_balance_service.dart';
 import 'package:goParcel/theme/app_tokens.dart';
@@ -204,14 +205,22 @@ class _HomeState extends State<Home> {
     return false;
   }
 
-  Future<void> _startDropSelection() async {
+  Future<void> _startDropSelection({Map<String, dynamic>? savedDrop, Map<String, dynamic>? recentPick}) async {
     await _ensureCurrentPickup();
-    final selectedDrop = await Get.to<Map<String, dynamic>>(
-      () => LocationSearchScreen(
-        locationType: "Drop",
-        pickupData: _confirmedPickupData,
-      ),
-    );
+    Map<String, dynamic>? selectedDrop;
+    if (savedDrop != null) {
+      // Same as choosing a saved place on the search screen.
+      selectedDrop = Map<String, dynamic>.from(savedDrop);
+      getdata.write("DropeAddress", [selectedDrop]);
+    } else {
+      selectedDrop = await Get.to<Map<String, dynamic>>(
+        () => LocationSearchScreen(
+          locationType: "Drop",
+          pickupData: _confirmedPickupData,
+          quickPick: recentPick,
+        ),
+      );
+    }
 
     Map<String, dynamic>? drop = selectedDrop;
     if (drop == null) {
@@ -1136,7 +1145,36 @@ class _HomeState extends State<Home> {
       _confirmedDropAddress = null;
     });
     await handler();
+    _loadHomePlaces();
   }
+
+  // "Where to?" card on Home: saved places (server) and recent drops (this phone).
+  List<Map<String, dynamic>> _homeSavedPlaces = [];
+  List<Map<String, dynamic>> _homeRecentPlaces = [];
+
+  Future<void> _loadHomePlaces() async {
+    final raw = getdata.read('recent_searches_list');
+    final recents = raw is List ? raw.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList() : <Map<String, dynamic>>[];
+    if (mounted) setState(() => _homeRecentPlaces = recents);
+    final uid = getdata.read("Uid");
+    if (uid == null || uid.toString().isEmpty || uid.toString() == "0") return;
+    try {
+      final response = await ApiWrapper.dataPostNode(Config.nodeAddressList, {"uid": uid.toString()});
+      final list = response is Map ? response["AddressList"] : null;
+      if (!mounted || list is! List) return;
+      setState(() => _homeSavedPlaces = list.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList());
+    } catch (_) {
+      // Saved places are a shortcut only; the card still shows recents.
+    }
+  }
+
+  /// A place tapped in "Where to?": an instant booking to it, through the same drop checks as the search screen.
+  Future<void> _bookToHomePlace({Map<String, dynamic>? saved, Map<String, dynamic>? recent}) =>
+      _startFreshBooking(() async {
+        setState(() => _selectedBookingType = 1);
+        await _ensureCurrentPickup();
+        await _startDropSelection(savedDrop: saved, recentPick: recent);
+      });
 
   Future<void> _handleBookNowTap() async {
     setState(() {
@@ -1820,6 +1858,7 @@ class _HomeState extends State<Home> {
       });
     });
     _loadWalletBalance();
+    _loadHomePlaces();
     debugPrint("======= currentLat ======== $currentLat");
     debugPrint("======= currentLong ======= $currentLong");
 
@@ -2323,6 +2362,13 @@ class _HomeState extends State<Home> {
                       _buildRewardMilestoneCard(),
                       const FreeRideChanceTile(),
                       const SizedBox(height: 12),
+                      HomeRecentPlaces(
+                        saved: _homeSavedPlaces,
+                        recents: _homeRecentPlaces,
+                        onSaved: (place) => _bookToHomePlace(saved: place),
+                        onRecent: (place) => _bookToHomePlace(recent: place),
+                        onSeeAll: () => _startFreshBooking(_handleBookNowTap),
+                      ),
                       if (showHowToUse) _buildHowToUseCard(),
                       // Wheeler Selection Section (shown after route selection)
                       if (_showLegacyVehicleSection && _pickupConfirmed)

@@ -41,8 +41,13 @@ class LocationSearchScreen extends StatefulWidget {
   /// Customise Order: search + pin on map only (see LocationConfirmMapScreen.locationOnly).
   final bool locationOnly;
 
+  /// A recent place tapped on Home ({name, address, lat, lng}): opens its map confirm step straight away,
+  /// so the rest of the flow (pin check, receiver details) is the same as picking it here.
+  final Map<String, dynamic>? quickPick;
+
   const LocationSearchScreen({
     this.locationOnly = false,
+    this.quickPick,
     super.key,
     required this.locationType,
     this.stopIndex = 0,
@@ -94,6 +99,21 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
 
     if (widget.initialData != null && widget.initialData!['address'] != null) {
       _searchController.text = widget.initialData!['address'].toString();
+    }
+
+    final quick = widget.quickPick;
+    final qLat = quick?['lat'], qLng = quick?['lng'];
+    if (quick != null && qLat is num && qLng is num) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final address = (quick['address'] ?? '').toString();
+        _openConfirmMapScreen(
+          lat: qLat.toDouble(),
+          lng: qLng.toDouble(),
+          address: address,
+          placeName: (quick['name'] ?? address).toString(),
+        );
+      });
     }
   }
 
