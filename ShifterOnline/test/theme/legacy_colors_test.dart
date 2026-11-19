@@ -13,6 +13,7 @@ const _swept = <String>[
   'lib/screens/authscreen/complete_profile.dart',
   'lib/screens/home/widgets/finding_driver_widgets.dart',
   'lib/screens/home/widgets/home_recent_places.dart',
+  'lib/screens/home/widgets/feature_intro_sheet.dart',
 ];
 
 void main() {

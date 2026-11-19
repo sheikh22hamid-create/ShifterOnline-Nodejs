@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/pressable_scale.dart';
 import '../../../theme/widgets/v2_art.dart';
+import 'feature_intro_sheet.dart';
 
 /// Porter-style 2×2 service tiles on Home: Book Now, Schedule, Low Fare, Customise Order.
 /// Presentational only — each tile calls the handler home.dart already uses for that booking mode.
@@ -15,6 +16,7 @@ class HomeServiceTiles extends StatelessWidget {
     required this.onLowFare,
     required this.onCustomise,
     this.scheduleEnabled = true,
+    this.onInfo,
   });
 
   final VoidCallback onBookNow;
@@ -23,18 +25,25 @@ class HomeServiceTiles extends StatelessWidget {
   final VoidCallback onCustomise;
   final bool scheduleEnabled;
 
+  /// ⓘ on a tile: explain that service ("how it works") without starting it.
+  final ValueChanged<ServiceFeature>? onInfo;
+
   @override
   Widget build(BuildContext context) {
     final tiles = <Widget>[
       _ServiceTile(
-          art: 'assets/v2/tile_book_now.png', artLabel: 'T1', label: 'Book Now'.tr, sub: 'Instant pickup'.tr, onTap: onBookNow),
+          art: 'assets/v2/tile_book_now.png', artLabel: 'T1', label: 'Book Now'.tr, sub: 'Instant pickup'.tr, onTap: onBookNow,
+          onInfo: onInfo == null ? null : () => onInfo!(ServiceFeature.bookNow)),
       if (scheduleEnabled)
         _ServiceTile(
-            art: 'assets/v2/tile_schedule.png', artLabel: 'T2', label: 'Schedule'.tr, sub: 'Pick date and time'.tr, onTap: onSchedule),
+            art: 'assets/v2/tile_schedule.png', artLabel: 'T2', label: 'Schedule'.tr, sub: 'Pick date and time'.tr, onTap: onSchedule,
+            onInfo: onInfo == null ? null : () => onInfo!(ServiceFeature.schedule)),
       _ServiceTile(
-          art: 'assets/v2/tile_low_fare.png', artLabel: 'T3', label: 'Low Fare'.tr, sub: 'Next day, lower price'.tr, onTap: onLowFare),
+          art: 'assets/v2/tile_low_fare.png', artLabel: 'T3', label: 'Low Fare'.tr, sub: 'Next day, lower price'.tr, onTap: onLowFare,
+          onInfo: onInfo == null ? null : () => onInfo!(ServiceFeature.lowFare)),
       _ServiceTile(
-          art: 'assets/v2/tile_customise.png', artLabel: 'T4', label: 'Customise Order'.tr, sub: 'Offer your own fare'.tr, onTap: onCustomise),
+          art: 'assets/v2/tile_customise.png', artLabel: 'T4', label: 'Customise Order'.tr, sub: 'Offer your own fare'.tr, onTap: onCustomise,
+          onInfo: onInfo == null ? null : () => onInfo!(ServiceFeature.customise)),
     ];
     final rows = <Widget>[];
     for (var i = 0; i < tiles.length; i += 2) {
@@ -61,8 +70,10 @@ class _ServiceTile extends StatelessWidget {
     required this.label,
     required this.sub,
     required this.onTap,
+    this.onInfo,
   });
 
+  final VoidCallback? onInfo;
   final String art;
   final String artLabel;
   final String label;
@@ -86,7 +97,37 @@ class _ServiceTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            V2Art(asset: art, placeholderLabel: artLabel, height: 60, fit: BoxFit.contain),
+            SizedBox(
+              height: 60,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(child: V2Art(asset: art, placeholderLabel: artLabel, height: 60, fit: BoxFit.contain)),
+                  if (onInfo != null)
+                    Positioned(
+                      top: -8,
+                      right: -8,
+                      child: Semantics(
+                        container: true,
+                        button: true,
+                        label: '${'How it works'.tr}: $label',
+                        excludeSemantics: true,
+                        child: InkResponse(
+                          onTap: onInfo,
+                          radius: 22,
+                          child: SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: Center(
+                              child: Icon(Icons.info_outline_rounded, size: 20, color: p.inkSubtle),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(height: AppSpace.s),
             Row(
               children: [

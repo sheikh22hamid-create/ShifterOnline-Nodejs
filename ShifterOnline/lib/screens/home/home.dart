@@ -47,6 +47,7 @@ import 'widgets/home_pickup_card.dart';
 import 'widgets/home_service_tiles.dart';
 import 'widgets/home_active_order_strip.dart';
 import 'widgets/home_recent_places.dart';
+import 'widgets/feature_intro_sheet.dart';
 import 'package:goParcel/screens/home/wallet_page.dart';
 import 'package:goParcel/services/wallet_balance_service.dart';
 import 'package:goParcel/theme/app_tokens.dart';
@@ -1146,6 +1147,20 @@ class _HomeState extends State<Home> {
     });
     await handler();
     _loadHomePlaces();
+  }
+
+  /// First tap on a service tile shows its "how it works" sheet; Continue starts the service and the sheet
+  /// is not shown again (the tile's ⓘ still opens it).
+  void _withFeatureIntro(ServiceFeature feature, VoidCallback start) {
+    final key = featureIntroSeenKey(feature);
+    if (getdata.read(key) == true) {
+      start();
+      return;
+    }
+    showFeatureIntro(context, feature, onContinue: () {
+      getdata.write(key, true);
+      start();
+    });
   }
 
   // "Where to?" card on Home: saved places (server) and recent drops (this phone).
@@ -2352,10 +2367,14 @@ class _HomeState extends State<Home> {
                       const SizedBox(height: 12),
                       _buildActiveOrderStrip(),
                       HomeServiceTiles(
-                        onBookNow: () => _startFreshBooking(_handleBookNowTap),
-                        onSchedule: () => _startFreshBooking(_handleScheduleBookingTap),
-                        onLowFare: () => _startFreshBooking(_handleNextDayDeliveryTap),
-                        onCustomise: CustomiseOrderTile.open,
+                        onBookNow: () => _withFeatureIntro(
+                            ServiceFeature.bookNow, () => _startFreshBooking(_handleBookNowTap)),
+                        onSchedule: () => _withFeatureIntro(
+                            ServiceFeature.schedule, () => _startFreshBooking(_handleScheduleBookingTap)),
+                        onLowFare: () => _withFeatureIntro(
+                            ServiceFeature.lowFare, () => _startFreshBooking(_handleNextDayDeliveryTap)),
+                        onCustomise: () => _withFeatureIntro(ServiceFeature.customise, CustomiseOrderTile.open),
+                        onInfo: (f) => showFeatureIntro(context, f),
                         scheduleEnabled: _scheduleBookingEnabled,
                       ),
                       const SizedBox(height: 12),
