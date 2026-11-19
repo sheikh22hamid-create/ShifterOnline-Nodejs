@@ -56,3 +56,13 @@ class _Placeholder extends StatelessWidget {
     );
   }
 }
+
+/// V1–V4 vehicle picture for a vehicle name ("Bike", "E Loader", "3 Wheeler", "Tata Ace"…).
+/// Unknown names get the 4 wheeler (V4), the most common booking.
+String vehicleArtFor(String? name) {
+  final n = (name ?? '').toLowerCase().replaceAll(RegExp(r'[\s_-]+'), ' ');
+  if (RegExp(r'bike|2 ?wheel|two wheel|scooter|motorcycle').hasMatch(n)) return 'assets/v2/vehicle_bike.png';
+  if (RegExp(r'e ?loader|e ?rickshaw|electric').hasMatch(n)) return 'assets/v2/vehicle_e_loader.png';
+  if (RegExp(r'3 ?wheel|three wheel|tempo|auto').hasMatch(n)) return 'assets/v2/vehicle_three_wheeler.png';
+  return 'assets/v2/vehicle_four_wheeler.png';
+}

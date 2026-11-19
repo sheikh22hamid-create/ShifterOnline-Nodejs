@@ -42,6 +42,7 @@ import '../../theme/widgets/app_buttons.dart';
 import '../../theme/widgets/app_info_banner.dart';
 import '../../theme/widgets/app_skeleton.dart';
 import '../../theme/widgets/app_top_bar.dart';
+import '../../theme/widgets/v2_art.dart';
 
 class SelectVehicleScreen extends StatefulWidget {
   final Map<String, dynamic> pickup;
@@ -2251,11 +2252,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       ),
       child: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: p.warningTint, shape: BoxShape.circle),
-            child: Icon(Icons.location_off_rounded, color: p.warning, size: 30),
-          ),
+          const V2Art(asset: 'assets/v2/empty_no_driver.png', placeholderLabel: 'E3', width: 180, height: 120),
           const SizedBox(height: 12),
           Text(
             'No Drivers Available Nearby',
@@ -2287,7 +2284,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
   }
 
-  Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [Icon(Icons.local_shipping_outlined, color: linercolor, size: 48), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
+  Widget _emptyState() => Container(padding: const EdgeInsets.fromLTRB(20, 28, 20, 22), decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(18)), child: Column(children: [V2Art(asset: (_availabilityError ?? '').toLowerCase().contains('outside our service area') ? 'assets/v2/empty_not_serviceable.png' : 'assets/v2/empty_no_driver.png', placeholderLabel: 'E', width: 180, height: 120), const SizedBox(height: 12), Text('No vehicles available nearby', textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')), const SizedBox(height: 6), Text(_availabilityError ?? "We couldn't find an available vehicle near your pickup location right now.", textAlign: TextAlign.center, style: TextStyle(color: greaycolor, height: 1.35, fontFamily: 'Gilroy_Medium')), const SizedBox(height: 14), OutlinedButton.icon(onPressed: _refreshAvailability, icon: const Icon(Icons.refresh_rounded), label: const Text('Try again'))]));
   /// Low Fare quote + pickup date + pickup window — moved unchanged from the bottom bar into the booking-type card.
   Widget? _lowFareChild() {
     if (!BookingTypeCard.showLowFareQuote(

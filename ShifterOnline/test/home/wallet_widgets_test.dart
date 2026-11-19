@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/home/widgets/wallet_widgets.dart';
 import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/widgets/v2_art.dart';
 
 Widget _host(Widget child, {double width = 390, double textScale = 1}) => MaterialApp(
       home: MediaQuery(
@@ -61,10 +62,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('missing wallet art shows the W1 placeholder', (tester) async {
+  testWidgets('wallet card shows the W1 art', (tester) async {
     await tester.pumpWidget(_host(WalletBalanceCard(balance: 0, onAddMoney: () {})));
     await tester.pumpAndSettle();
-    expect(find.text('W1'), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is V2Art && w.asset == 'assets/v2/wallet_icon.png'), findsOneWidget);
   });
 
   testWidgets('type chips sit on one line and size to their label', (tester) async {

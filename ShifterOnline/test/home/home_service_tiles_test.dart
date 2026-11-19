@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/home/widgets/home_service_tiles.dart';
+import 'package:goParcel/theme/widgets/v2_art.dart';
 
 Widget _host(Widget child, {double width = 390, double textScale = 1}) => MaterialApp(
       home: MediaQuery(
@@ -49,13 +50,13 @@ void main() {
     });
   }
 
-  testWidgets('width 320, textScale 1.3 does not overflow; art placeholders show', (tester) async {
+  testWidgets('width 320, textScale 1.3 does not overflow; tile art shows', (tester) async {
     await tester.pumpWidget(_host(
         HomeServiceTiles(onBookNow: () {}, onSchedule: () {}, onLowFare: () {}, onCustomise: () {}),
         width: 320,
         textScale: 1.3));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text('T1'), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is V2Art && w.asset == 'assets/v2/tile_book_now.png'), findsOneWidget);
   });
 }

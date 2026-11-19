@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:goParcel/screens/home/widgets/home_header.dart';
 import 'package:goParcel/services/wallet_balance_service.dart';
+import 'package:goParcel/theme/widgets/v2_art.dart';
 
 Widget _host(Widget child, {double width = 390, double textScale = 1}) => MaterialApp(
       home: MediaQuery(
@@ -49,10 +50,10 @@ void main() {
     expect(region.value.statusBarIconBrightness, Brightness.dark);
   });
 
-  testWidgets('missing H1 art shows its placeholder, no error', (tester) async {
+  testWidgets('header shows the H1 art, no error', (tester) async {
     await tester.pumpWidget(_host(HomeHeader(onNotificationTap: () {})));
     await tester.pumpAndSettle();
-    expect(find.text('H1'), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is V2Art && w.asset == 'assets/v2/home_header.png'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

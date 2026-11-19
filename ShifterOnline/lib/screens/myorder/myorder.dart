@@ -19,6 +19,7 @@ import '../home/select_vehicle.dart';
 import '../../utils/colors.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_skeleton.dart';
+import '../../theme/widgets/v2_art.dart';
 
 class MyOrder extends StatefulWidget {
   final String? type;
@@ -146,14 +147,8 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
                   if (model == null || model.result == "false" || orders.isEmpty) {
                     return Column(
                       children: [
-                        SizedBox(height: Get.height * 0.2),
-                        Container(
-                          width: 72,
-                          height: 72,
-                          decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle, border: Border.all(color: p.line)),
-                          child: Icon(selectTab == 2 ? Icons.favorite_border_rounded : Icons.receipt_long_outlined,
-                              color: p.inkSubtle, size: 32),
-                        ),
+                        SizedBox(height: Get.height * 0.12),
+                        const V2Art(asset: 'assets/v2/empty_no_orders.png', placeholderLabel: 'E2', width: 220, height: 147),
                         const SizedBox(height: 14),
                         Center(
                           child: Text(
