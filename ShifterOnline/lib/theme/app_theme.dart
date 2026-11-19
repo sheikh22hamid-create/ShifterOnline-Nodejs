@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,6 +17,11 @@ ThemeData buildAppTheme() {
   return ThemeData(
     fontFamily: 'Gilroy_Regular',
     useMaterial3: false,
+    // One smooth slide for every screen change (Navigator routes); GetX routes use the same via main.dart.
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+    }),
     splashColor: Colors.transparent,
     hoverColor: Colors.transparent,
     highlightColor: Colors.transparent,

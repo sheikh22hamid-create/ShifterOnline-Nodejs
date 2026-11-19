@@ -64,6 +64,9 @@ class _MyAppState extends State<MyApp> {
         themeMode: ThemeMode.light,
         translations: LocalString(),
         theme: buildAppTheme(),
+        // Porter-like: every screen slides in from the right, same speed everywhere.
+        defaultTransition: Transition.cupertino,
+        transitionDuration: const Duration(milliseconds: 300),
         debugShowCheckedModeBanner: false,
         home: SplashScreen(),
         locale: resolveAppLocale(getdata.read("lan2")?.toString()),

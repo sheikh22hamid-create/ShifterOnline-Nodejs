@@ -149,6 +149,7 @@ class LocalString extends Translations {
           "Contact Support": "Contact Support",
           "Support number is not available right now. Please try again.": "Support number is not available right now. Please try again.",
           "Recenter": "Recenter",
+          "No orders yet": "No orders yet",
           "Where to?": "Where to?",
           "Search": "Search",
           "Work": "Work",

@@ -20,6 +20,7 @@ import '../../utils/colors.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_skeleton.dart';
 import '../../theme/widgets/v2_art.dart';
+import 'order_lists.dart';
 
 class MyOrder extends StatefulWidget {
   final String? type;
@@ -143,8 +144,13 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
                       : selectTab == 1
                           ? pdOrderHistroyApiController.completedOrderApiModel
                           : pdOrderHistroyApiController.recentlyOrderApiModel;
-                  final orders = model?.orderHistory ?? const <OrderHistory>[];
-                  if (model == null || model.result == "false" || orders.isEmpty) {
+                  final orders = selectTab == 0
+                      ? recentOrders(
+                          pdOrderHistroyApiController.recentlyOrderApiModel?.orderHistory ?? const <OrderHistory>[],
+                          pdOrderHistroyApiController.completedOrderApiModel?.orderHistory ?? const <OrderHistory>[],
+                        )
+                      : model?.orderHistory ?? const <OrderHistory>[];
+                  if (orders.isEmpty) {
                     return Column(
                       children: [
                         SizedBox(height: Get.height * 0.12),
@@ -152,9 +158,7 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
                         const SizedBox(height: 14),
                         Center(
                           child: Text(
-                            selectTab == 2
-                                ? "No favorite orders yet".tr
-                                : "${model?.responseMsg ?? "No Order History Found!"}",
+                            selectTab == 2 ? "No favorite orders yet".tr : "No orders yet".tr,
                             textAlign: TextAlign.center,
                             style: AppText.bodyStrong(p.ink).copyWith(fontSize: 16),
                           ),
@@ -171,7 +175,7 @@ class _MyOrderState extends State<MyOrder> with SingleTickerProviderStateMixin {
                     itemBuilder: (context, index) {
                       final order = orders[index];
                       // Favorite / Book Again only make sense for finished trips.
-                      final isFinished = selectTab != 0;
+                      final isFinished = isFinishedOrder(order);
                       return orderlistBox(
                         context,
                         image: "assets/package_box_file.svg",
