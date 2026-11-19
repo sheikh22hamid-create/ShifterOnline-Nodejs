@@ -14,7 +14,7 @@ class Config {
 
   // Razorpay key ID (public; the secret lives only on the server). Must match the server's
   // RAZORPAY_KEY_ID: test key for DEV, live key for production.
-  static const String razorpayKeyId = 'rzp_test_Rr8n8p41taq6fM';
+  static const String razorpayKeyId = 'rzp_test_U20GcnTBwwUswS';
 
   /// Checks whether a given string is a valid, non-empty image path or URL.
   /// Prevents 404 network errors caused by empty paths or naked base URLs.
