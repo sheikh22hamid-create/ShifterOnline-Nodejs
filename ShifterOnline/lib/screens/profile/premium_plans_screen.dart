@@ -11,6 +11,11 @@ import 'package:provider/provider.dart';
 import 'package:goParcel/Payment/razor_pay.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'free_booking_status_card.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
+import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/widgets/app_buttons.dart';
+import 'package:goParcel/theme/widgets/app_sheet.dart';
+import 'package:goParcel/theme/widgets/app_skeleton.dart';
 
 class PremiumPlansScreen extends StatefulWidget {
   const PremiumPlansScreen({super.key});
@@ -140,201 +145,152 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
   void _showPaymentBottomSheet(Map<String, dynamic> plan) {
     final purchaseInfo = plan['purchase_info'] as Map<String, dynamic>? ?? {};
     final priceInfo = plan['price_info'] as Map<String, dynamic>? ?? {};
-    
+
     final double planPrice = double.tryParse(priceInfo['price']?.toString() ?? '0') ?? 0;
     int pointsAvailable = int.tryParse(purchaseInfo['points_available']?.toString() ?? '0') ?? 0;
     // Admin caps how much of the price points may cover - never let the stepper go past it.
     int maxUsablePoints = int.tryParse(purchaseInfo['points_usable']?.toString() ?? '') ?? pointsAvailable;
     double pointValue = double.tryParse(purchaseInfo['point_value']?.toString() ?? '1') ?? 1;
-    
+
     int usedPoints = 0;
-    
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: notifier.getBgColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            final p = AppPalette.current;
             double discountFromPoints = (usedPoints * pointValue).toDouble();
             double finalAmountToPay = planPrice - discountFromPoints;
             if (finalAmountToPay < 0) finalAmountToPay = 0;
 
-            return Padding(
-              padding: EdgeInsets.only(
-                left: 16, right: 16, top: 20,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
+            Widget stepButton(IconData icon, String label, VoidCallback onTap) => Semantics(
+                  button: true,
+                  label: label,
+                  excludeSemantics: true,
+                  child: InkResponse(
+                    onTap: onTap,
+                    radius: 24,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle, border: Border.all(color: p.brand)),
+                      child: Icon(icon, color: p.brandText, size: 20),
+                    ),
+                  ),
+                );
+
+            return AppSheet(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 16),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        "Payment Details".tr,
-                        style: TextStyle(
-                          fontFamily: 'Gilroy_Bold',
-                          fontSize: 18,
-                          color: notifier.text,
-                        ),
-                      ),
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        child: Icon(Icons.close, color: notifier.text),
+                      Expanded(child: Text("Payment Details".tr, style: AppText.title(p.ink).copyWith(fontSize: 20))),
+                      IconButton(
+                        tooltip: 'Close'.tr,
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(Icons.close_rounded, color: p.inkMuted),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  
-                  // Plan Info
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        plan['plan_name']?.toString() ?? 'Plan',
-                        style: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 16, color: notifier.text),
-                      ),
-                      Text(
-                        "$_currency${planPrice.toStringAsFixed(0)}",
-                        style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16, color: notifier.text),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 12),
 
-                  // Points Section
+                  // Plan
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: p.canvas, borderRadius: BorderRadius.circular(AppRadius.input)),
+                    child: Row(
+                      children: [
+                        Icon(Icons.workspace_premium_rounded, color: p.brandText, size: 22),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(plan['plan_name']?.toString() ?? 'Plan',
+                              style: AppText.bodyStrong(p.ink).copyWith(fontSize: 15)),
+                        ),
+                        Text("$_currency${planPrice.toStringAsFixed(0)}", style: AppText.bodyStrong(p.ink).copyWith(fontSize: 15)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Points
                   if (pointsAvailable > 0) ...[
                     Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                      ),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: p.brandTint, borderRadius: BorderRadius.circular(AppRadius.input)),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                "Available Points: $pointsAvailable".tr,
-                                style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 14, color: Colors.orange),
+                              Icon(Icons.stars_rounded, color: p.brandText, size: 18),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text("Available Points: $pointsAvailable".tr,
+                                    style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 14)),
                               ),
-                              Text(
-                                "(1 Point = $_currency$pointValue)".tr,
-                                style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12, color: Colors.orange),
-                              ),
+                              Text("(1 Point = $_currency$pointValue)".tr, style: AppText.caption(p.brandText)),
                             ],
                           ),
                           const SizedBox(height: 12),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                "Use Points".tr,
-                                style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 15, color: notifier.text),
+                              Expanded(child: Text("Use Points".tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 15))),
+                              stepButton(Icons.remove_rounded, 'Use fewer points'.tr, () {
+                                if (usedPoints > 0) {
+                                  setSheetState(() => usedPoints -= 10);
+                                  if (usedPoints < 0) usedPoints = 0;
+                                }
+                              }),
+                              SizedBox(
+                                width: 56,
+                                child: Text("$usedPoints",
+                                    textAlign: TextAlign.center, style: AppText.section(p.ink)),
                               ),
-                              Row(
-                                children: [
-                                  InkWell(
-                                    onTap: () {
-                                      if (usedPoints > 0) {
-                                        setSheetState(() => usedPoints -= 10);
-                                        if (usedPoints < 0) usedPoints = 0;
-                                      }
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Icon(Icons.remove, color: Colors.white, size: 16),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                                    child: Text(
-                                      "$usedPoints",
-                                      style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 16, color: notifier.text),
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () {
-                                      if (usedPoints < maxUsablePoints && finalAmountToPay > 0) {
-                                        setSheetState(() => usedPoints += 10);
-                                        if (usedPoints > maxUsablePoints) usedPoints = maxUsablePoints;
-                                      }
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Icon(Icons.add, color: Colors.white, size: 16),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                              stepButton(Icons.add_rounded, 'Use more points'.tr, () {
+                                if (usedPoints < maxUsablePoints && finalAmountToPay > 0) {
+                                  setSheetState(() => usedPoints += 10);
+                                  if (usedPoints > maxUsablePoints) usedPoints = maxUsablePoints;
+                                }
+                              }),
                             ],
                           ),
                           if (usedPoints > 0) ...[
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 10),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text("Points Value".tr, style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 13, color: Colors.green)),
-                                Text("- $_currency${discountFromPoints.toStringAsFixed(0)}", style: const TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 13, color: Colors.green)),
+                                Expanded(child: Text("Points Value".tr, style: AppText.body(p.successText).copyWith(fontSize: 13.5))),
+                                Text("- $_currency${discountFromPoints.toStringAsFixed(0)}",
+                                    style: AppText.bodyStrong(p.successText).copyWith(fontSize: 14)),
                               ],
                             ),
                           ],
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 16),
                   ],
 
-                  Divider(color: notifier.bordecolor),
-                  const SizedBox(height: 12),
-
+                  Divider(color: p.divider, height: 1),
+                  const SizedBox(height: 14),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        "Amount to Pay".tr,
-                        style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 18, color: notifier.text),
-                      ),
-                      Text(
-                        "$_currency${finalAmountToPay.toStringAsFixed(0)}",
-                        style: TextStyle(fontFamily: 'Gilroy_Bold', fontSize: 22, color: linercolor),
-                      ),
+                      Expanded(child: Text("Amount to Pay".tr, style: AppText.section(p.ink))),
+                      Text("$_currency${finalAmountToPay.toStringAsFixed(0)}", style: AppText.title(p.ink).copyWith(fontSize: 26)),
                     ],
                   ),
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _purchasePlanWithAmount(plan, finalAmountToPay, usedPoints);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: linercolor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: Text(
-                        finalAmountToPay <= 0 ? "Activate Plan".tr : "Pay $_currency${finalAmountToPay.toStringAsFixed(0)}".tr,
-                        style: const TextStyle(fontSize: 16, color: Colors.white, fontFamily: 'Gilroy_Bold'),
-                      ),
-                    ),
+                  const SizedBox(height: 18),
+                  AppPrimaryButton(
+                    label: finalAmountToPay <= 0 ? "Activate Plan".tr : "Pay $_currency${finalAmountToPay.toStringAsFixed(0)}".tr,
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _purchasePlanWithAmount(plan, finalAmountToPay, usedPoints);
+                    },
                   ),
                 ],
               ),
@@ -448,227 +404,170 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
     }
   }
 
+  /// Text under the title on the orange band (same dark brown as Home's header).
+  static const Color _onBandSub = Color(0xFF3A1A0B);
+
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of<ColorNotifier>(context, listen: true);
-    return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              // ── Header ──────────────────────────────────────────────────
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: linercolor,
+    final p = AppPalette.current;
+    final selected = _selectedPlanIndex == null || _selectedPlanIndex! >= _plans.length ? null : _plans[_selectedPlanIndex!];
+    String? selectedPrice;
+    if (selected != null) {
+      final priceInfo = selected['price_info'] as Map<String, dynamic>? ?? {};
+      final purchaseInfo = selected['purchase_info'] as Map<String, dynamic>? ?? {};
+      final price = double.tryParse(purchaseInfo['payable_amount']?.toString() ?? priceInfo['price']?.toString() ?? '');
+      if (price != null) selectedPrice = '${priceInfo['currency_symbol']?.toString() ?? _currency}${price.toStringAsFixed(0)}';
+    }
+    final top = MediaQuery.paddingOf(context).top;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
+      child: Scaffold(
+        backgroundColor: p.canvas,
+        bottomNavigationBar: !_isLoadingPlans && _plans.isNotEmpty
+            ? Material(
+                color: p.surface,
+                elevation: 8,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    child: AppPrimaryButton(
+                      label: _isPurchasing
+                          ? "Processing...".tr
+                          : selected == null
+                              ? "Choose a plan".tr
+                              : "Purchase Plan".tr,
+                      trailing: _isPurchasing ? null : selectedPrice,
+                      onPressed: (selected == null || _isPurchasing) ? null : () => _showPaymentBottomSheet(selected),
+                    ),
+                  ),
                 ),
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 16,
-                  bottom: 30,
-                  left: 16,
-                  right: 16,
-                ),
-                child: Column(
-                  children: [
-                    // Back button + title row
-                    Row(
-                      children: [
-                        InkWell(
+              )
+            : null,
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                // ── Orange band ─────────────────────────────────────────────
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: p.brand,
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+                  ),
+                  padding: EdgeInsets.fromLTRB(16, top + 10, 16, 22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Semantics(
+                        button: true,
+                        label: 'Back'.tr,
+                        excludeSemantics: true,
+                        child: InkResponse(
                           onTap: () => Get.back(),
-                          borderRadius: BorderRadius.circular(30),
+                          radius: 24,
                           child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.2),
-                            ),
-                            child: const Icon(Icons.arrow_back,
-                                color: Colors.white, size: 20),
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(color: AppPalette.light.surface, shape: BoxShape.circle),
+                            child: Icon(Icons.arrow_back_rounded, color: AppPalette.light.ink, size: 22),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          "Premium Plans".tr,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Gilroy_Bold',
-                            fontSize: 20,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // Icon + subtitle
-                    Container(
-                      height: 68,
-                      width: 68,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
-                        shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.workspace_premium_rounded,
-                        size: 36,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Upgrade & Unlock Benefits".tr,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        color: Colors.white,
-                        fontFamily: 'Gilroy_Bold',
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      "Choose a plan that suits you best".tr,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Colors.white70,
-                        fontFamily: 'Gilroy_Medium',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── Active Plan Banner ───────────────────────────────────────
-              if (_activePlan != null) _buildActivePlanBanner(),
-
-              // ── Plans List ───────────────────────────────────────────────
-              Expanded(
-                child: _isLoadingPlans
-                    ? Center(
-                        child: CircularProgressIndicator(color: linercolor))
-                    : _plans.isEmpty
-                        ? _buildEmptyState()
-                        : SingleChildScrollView(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 16),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
                             child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const FreeBookingStatusCard(showUpsell: false),
-                                ...List.generate(_plans.length, (index) {
-                                  return _buildPlanCard(index);
-                                }),
-                                const SizedBox(height: 16),
-                                // ── Purchase Button ────────────────────
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: (_selectedPlanIndex == null ||
-                                            _isPurchasing)
-                                        ? null
-                                        : () => _showPaymentBottomSheet(
-                                            _plans[_selectedPlanIndex!]),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: linercolor,
-                                      disabledBackgroundColor:
-                                          linercolor.withOpacity(0.4),
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 16),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(14),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      _isPurchasing
-                                          ? "Processing...".tr
-                                          : "Purchase Plan".tr,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                        fontFamily: 'Gilroy_Bold',
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
+                                Text("Premium Plans".tr,
+                                    style: AppText.title(p.onBrand).copyWith(fontSize: 27, letterSpacing: -0.4)),
+                                const SizedBox(height: 4),
+                                Text("Upgrade & Unlock Benefits".tr,
+                                    style: AppText.bodyStrong(_onBandSub).copyWith(fontSize: 15)),
+                                Text("Choose a plan that suits you best".tr,
+                                    style: AppText.body(_onBandSub).copyWith(fontSize: 13.5)),
                               ],
                             ),
                           ),
-              ),
-            ],
-          ),
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(color: AppPalette.light.surface, shape: BoxShape.circle, boxShadow: AppShadow.card),
+                            child: Icon(Icons.workspace_premium_rounded, size: 34, color: p.brand),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
 
-          // ── Global loading overlay ─────────────────────────────────────
-          if (_isPurchasing)
-            Container(
-              color: Colors.black.withOpacity(0.3),
-              child: Center(
-                child: CircularProgressIndicator(color: linercolor),
-              ),
+                // ── Plans ──────────────────────────────────────────────────
+                Expanded(
+                  child: _isLoadingPlans
+                      ? ListView(padding: const EdgeInsets.all(16), children: const [
+                          AppSkeleton(height: 180, radius: 16),
+                          SizedBox(height: 12),
+                          AppSkeleton(height: 180, radius: 16),
+                        ])
+                      : _plans.isEmpty
+                          ? _buildEmptyState()
+                          : ListView(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                              children: [
+                                if (_activePlan != null) _buildActivePlanBanner(),
+                                const FreeBookingStatusCard(showUpsell: false),
+                                ...List.generate(_plans.length, _buildPlanCard),
+                              ],
+                            ),
+                ),
+              ],
             ),
-        ],
+
+            // ── Global loading overlay ─────────────────────────────────────
+            if (_isPurchasing)
+              Container(
+                color: Colors.black.withValues(alpha: 0.3),
+                child: Center(child: CircularProgressIndicator(color: p.brand)),
+              ),
+          ],
+        ),
       ),
     );
   }
 
   // ── Active Plan Banner ─────────────────────────────────────────────────
   Widget _buildActivePlanBanner() {
+    final p = AppPalette.current;
     final name = _activePlan!['plan_name']?.toString() ?? 'Active Plan';
     final validity = _activePlan!['validity_label']?.toString() ?? '';
     return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.green.shade700,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: p.successTint,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: p.success.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.verified_rounded, color: Colors.white, size: 28),
+          Icon(Icons.verified_rounded, color: p.successText, size: 28),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Active Plan: $name",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Gilroy_Bold',
-                    fontSize: 15,
-                  ),
-                ),
-                if (validity.isNotEmpty)
-                  Text(
-                    validity,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontFamily: 'Gilroy_Medium',
-                      fontSize: 12,
-                    ),
-                  ),
+                Text("${'Active Plan'.tr}: $name", style: AppText.bodyStrong(p.ink).copyWith(fontSize: 15)),
+                if (validity.isNotEmpty) Text(validity, style: AppText.caption(p.inkMuted)),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              "ACTIVE",
-              style: TextStyle(
-                color: Colors.white,
-                fontFamily: 'Gilroy_Bold',
-                fontSize: 11,
-              ),
-            ),
+            decoration: BoxDecoration(color: p.success, borderRadius: BorderRadius.circular(20)),
+            child: Text("ACTIVE".tr, style: AppText.caption(AppPalette.light.surface).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11)),
           ),
         ],
       ),
@@ -677,12 +576,12 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
 
   // ── Plan Card ──────────────────────────────────────────────────────────
   Widget _buildPlanCard(int index) {
+    final p = AppPalette.current;
     final plan = _plans[index];
     final bool isSelected = _selectedPlanIndex == index;
 
     final String name = plan['plan_name']?.toString() ?? 'Plan';
-    final String validityLabel =
-        plan['validity_label']?.toString() ?? '';
+    final String validityLabel = plan['validity_label']?.toString() ?? '';
     final String description = plan['description']?.toString() ?? '';
     final bool isPopular = plan['is_popular'] == true;
     final bool isActive = plan['is_active'] == true;
@@ -691,308 +590,184 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
     final purchaseInfo = plan['purchase_info'] as Map<String, dynamic>? ?? {};
     final referAndEarn = plan['refer_and_earn'] as Map<String, dynamic>? ?? {};
     final String refNote = referAndEarn['note']?.toString() ?? '';
-    
+
     final double pointsCoveredAmount = double.tryParse(purchaseInfo['points_covered_amount']?.toString() ?? '0') ?? 0;
     final int pointsUsable = int.tryParse(purchaseInfo['points_usable']?.toString() ?? '0') ?? 0;
 
     final double finalPrice =
         double.tryParse(purchaseInfo['payable_amount']?.toString() ?? priceInfo['price']?.toString() ?? '0') ?? 0;
-    final double originalPrice =
-        double.tryParse(priceInfo['price']?.toString() ?? '0') ?? 0;
-    final String currencySymbol =
-        priceInfo['currency_symbol']?.toString() ?? _currency;
+    final double originalPrice = double.tryParse(priceInfo['price']?.toString() ?? '0') ?? 0;
+    final String currencySymbol = priceInfo['currency_symbol']?.toString() ?? _currency;
     final bool hasDiscount = originalPrice > finalPrice;
 
-    // Benefits ui_tags
     final List<String> uiTags = [];
     if (plan['ui_tags'] is List) {
       uiTags.addAll(List<String>.from(plan['ui_tags']));
     }
 
-    return GestureDetector(
-      onTap: () {
-        if (!isActive) {
-          setState(() => _selectedPlanIndex = index);
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: notifier.getBgColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isActive
-                ? Colors.green
-                : isSelected
-                    ? linercolor
-                    : notifier.bordecolor,
-            width: (isSelected || isActive) ? 2 : 1,
+    final borderColor = isActive ? p.success : (isSelected ? p.brand : p.line);
+    return Semantics(
+      selected: isSelected,
+      button: !isActive,
+      child: GestureDetector(
+        onTap: () {
+          if (!isActive) setState(() => _selectedPlanIndex = index);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: borderColor, width: (isSelected || isActive) ? 2 : 1),
+            boxShadow: AppShadow.card,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: isSelected
-                  ? linercolor.withOpacity(0.15)
-                  : Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-                  const SizedBox(height: 10),
-
-                  // ── Title Row ──────────────────────────────────────
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, style: AppText.section(p.ink)),
+                              if (validityLabel.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(validityLabel, style: AppText.caption(p.inkMuted).copyWith(fontSize: 12.5)),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (isActive)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: p.successTint, borderRadius: BorderRadius.circular(20)),
+                            child: Text("Current".tr,
+                                style: AppText.caption(p.successText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11.5)),
+                          )
+                        else
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            height: 24,
+                            width: 24,
+                            margin: EdgeInsets.only(top: isPopular ? 14 : 0),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: isSelected ? p.brand : Colors.transparent,
+                              border: Border.all(color: isSelected ? p.brand : p.inkSubtle, width: 2),
+                            ),
+                            child: isSelected ? Icon(Icons.check_rounded, color: p.onBrand, size: 16) : null,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        Text("$currencySymbol${finalPrice.toStringAsFixed(0)}",
+                            style: AppText.title(p.ink).copyWith(fontSize: 28)),
+                        if (hasDiscount) ...[
+                          Text(
+                            "$currencySymbol${originalPrice.toStringAsFixed(0)}",
+                            style: AppText.body(p.inkSubtle).copyWith(fontSize: 15, decoration: TextDecoration.lineThrough),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(color: p.successTint, borderRadius: BorderRadius.circular(6)),
+                            child: Text(
+                              "${'Save'.tr} $currencySymbol${(originalPrice - finalPrice).toStringAsFixed(0)}",
+                              style: AppText.caption(p.successText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11.5),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(description, style: AppText.body(p.inkMuted).copyWith(fontSize: 13.5, height: 1.35)),
+                    ],
+                    if (pointsUsable > 0) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: p.brandTint, borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.stars_rounded, color: p.brandText, size: 15),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                "$pointsUsable ${'Points Applied'.tr} (-$currencySymbol${pointsCoveredAmount.toStringAsFixed(0)})",
+                                style: AppText.caption(p.brandText).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (uiTags.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Divider(color: p.divider, height: 1),
+                      const SizedBox(height: 12),
+                      ...uiTags.map(
+                        (tag) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.check_circle_rounded, color: p.success, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(tag, style: AppText.body(p.ink).copyWith(fontSize: 13.5, height: 1.35))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (refNote.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(color: p.canvas, borderRadius: BorderRadius.circular(10)),
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              name,
-                              style: TextStyle(
-                                fontFamily: 'Gilroy_Bold',
-                                fontSize: 17,
-                                color: notifier.text,
-                              ),
-                            ),
-                            if (validityLabel.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                validityLabel,
-                                style: const TextStyle(
-                                  fontFamily: 'Gilroy_Medium',
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      // Radio / Active indicator
-                      if (isActive)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.green),
-                          ),
-                          child: const Text(
-                            "Current",
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 11,
-                            ),
-                          ),
-                        )
-                      else
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          height: 22,
-                          width: 22,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isSelected
-                                ? linercolor
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: isSelected ? linercolor : Colors.grey,
-                              width: 2,
-                            ),
-                          ),
-                          child: isSelected
-                              ? const Icon(Icons.check,
-                                  color: Colors.white, size: 14)
-                              : null,
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // ── Price Row ──────────────────────────────────────
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        "$currencySymbol${finalPrice.toStringAsFixed(0)}",
-                        style: TextStyle(
-                          fontFamily: 'Gilroy_Bold',
-                          fontSize: 28,
-                          color: linercolor,
-                        ),
-                      ),
-                      if (hasDiscount) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          "$currencySymbol${originalPrice.toStringAsFixed(0)}",
-                          style: const TextStyle(
-                            fontFamily: 'Gilroy_Medium',
-                            fontSize: 15,
-                            color: Colors.grey,
-                            decoration: TextDecoration.lineThrough,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            "Save $currencySymbol${(originalPrice - finalPrice).toStringAsFixed(0)}",
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy_Bold',
-                              fontSize: 11,
-                              color: Colors.green,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style: const TextStyle(
-                        fontFamily: 'Gilroy_Medium',
-                        fontSize: 13,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-
-                  if (pointsUsable > 0) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.stars, color: Colors.orange, size: 14),
-                          const SizedBox(width: 4),
-                          Text(
-                            "$pointsUsable Points Applied (-$currencySymbol${pointsCoveredAmount.toStringAsFixed(0)})",
-                            style: const TextStyle(
-                              fontFamily: 'Gilroy_Medium',
-                              fontSize: 12,
-                              color: Colors.orange,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  // ── Benefits ──────────────────────────────────────
-                  if (uiTags.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Divider(color: notifier.bordecolor),
-                    const SizedBox(height: 8),
-                    ...uiTags.map(
-                      (tag) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.check_circle_rounded,
-                                color: Colors.green, size: 16),
+                            Icon(Icons.info_outline_rounded, color: p.inkMuted, size: 16),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                tag,
-                                style: TextStyle(
-                                  fontFamily: 'Gilroy_Medium',
-                                  fontSize: 13,
-                                  color: notifier.text,
-                                ),
-                              ),
-                            ),
+                            Expanded(child: Text(refNote, style: AppText.caption(p.inkMuted).copyWith(fontSize: 12.5, height: 1.35))),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   ],
-
-                  if (refNote.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.info_outline, color: Colors.blue, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              refNote,
-                              style: const TextStyle(
-                                fontFamily: 'Gilroy_Medium',
-                                fontSize: 11,
-                                color: Colors.blue,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // ── Popular Badge ────────────────────────────────────────
-            if (isPopular)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade600,
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(18),
-                      bottomLeft: Radius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    "Popular",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontFamily: 'Gilroy_Bold',
-                      fontSize: 11,
-                    ),
-                  ),
                 ),
               ),
-          ],
+              if (isPopular)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: p.brand,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(AppRadius.card - 2),
+                        bottomLeft: Radius.circular(12),
+                      ),
+                    ),
+                    child: Text("Popular".tr, style: AppText.caption(p.onBrand).copyWith(fontFamily: 'Gilroy_Bold', fontSize: 11.5)),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1000,32 +775,28 @@ class _PremiumPlansScreenState extends State<PremiumPlansScreen> {
 
   // ── Empty State ────────────────────────────────────────────────────────
   Widget _buildEmptyState() {
+    final p = AppPalette.current;
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.info_outline_rounded, size: 60, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(
-            "No plans available".tr,
-            style: TextStyle(
-              fontFamily: 'Gilroy_Bold',
-              fontSize: 16,
-              color: notifier.text,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(color: p.brandTint, shape: BoxShape.circle),
+              child: Icon(Icons.workspace_premium_outlined, size: 38, color: p.brandText),
             ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => Get.back(),
-            child: Text(
-              "Go Back".tr,
-              style: TextStyle(
-                fontFamily: 'Gilroy_Medium',
-                color: linercolor,
-              ),
+            const SizedBox(height: 14),
+            Text("No plans available".tr, style: AppText.section(p.ink)),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text("Go Back".tr, style: AppText.bodyStrong(p.brandText)),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
