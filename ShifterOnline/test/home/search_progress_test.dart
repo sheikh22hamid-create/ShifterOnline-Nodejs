@@ -68,4 +68,35 @@ void main() {
     expect(kSearchStageMessages[3],
         'Still looking. Your order stays active, no need to book again.');
   });
+
+  group('SearchProgressTracker', () {
+    final t0 = DateTime(2026, 11, 19, 10);
+
+    test('without a real search deadline it uses time on screen over 5 minutes', () {
+      final tr = SearchProgressTracker(screenOpenedAt: t0)..orderedAt = t0;
+      // The 130 s safety timer is NOT a search window: at 125 s we must not be late.
+      final f = tr.fractionAt(t0.add(const Duration(seconds: 125)));
+      expect(f, closeTo(125 / 300, 1e-9));
+      expect(searchStage(f), lessThan(3));
+    });
+
+    test('uses the order window once the real search deadline is known', () {
+      final tr = SearchProgressTracker(screenOpenedAt: t0)
+        ..orderedAt = t0
+        ..searchDeadline = t0.add(const Duration(minutes: 10));
+      expect(tr.fractionAt(t0.add(const Duration(minutes: 5))), closeTo(0.5, 1e-9));
+    });
+
+    test('never moves backwards when the deadline is pushed later', () {
+      final tr = SearchProgressTracker(screenOpenedAt: t0)
+        ..orderedAt = t0
+        ..searchDeadline = t0.add(const Duration(minutes: 2));
+      final late = tr.fractionAt(t0.add(const Duration(seconds: 110)));
+      expect(searchStage(late), 3);
+      tr.searchDeadline = t0.add(const Duration(minutes: 20));
+      final after = tr.fractionAt(t0.add(const Duration(seconds: 111)));
+      expect(after, greaterThanOrEqualTo(late));
+      expect(searchStage(after), 3);
+    });
+  });
 }

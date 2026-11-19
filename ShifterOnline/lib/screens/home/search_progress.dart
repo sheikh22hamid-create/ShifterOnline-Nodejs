@@ -43,3 +43,28 @@ const List<String> kSearchStageMessages = [
   'Drivers usually accept once they finish their current trip.',
   'Still looking. Your order stays active, no need to book again.',
 ];
+
+/// Screen-side state for the progress display.
+///
+/// [searchDeadline] must be the REAL end of the driver search (System 2 window or guarantee wait),
+/// never the client's safety timer. Until it is known, time on screen over [kNominalSearchWindow] is used.
+/// The returned fraction never moves backwards, so a later deadline cannot shrink the bar or undo "late".
+class SearchProgressTracker {
+  SearchProgressTracker({required this.screenOpenedAt});
+
+  final DateTime screenOpenedAt;
+  DateTime? orderedAt;
+  DateTime? searchDeadline;
+  double _shown = 0;
+
+  double fractionAt(DateTime now) {
+    final f = searchFraction(
+      start: searchDeadline == null ? null : orderedAt,
+      deadline: searchDeadline,
+      screenOpenedAt: screenOpenedAt,
+      now: now,
+    );
+    if (f > _shown) _shown = f;
+    return _shown;
+  }
+}

@@ -54,10 +54,10 @@ class _WaitingScreenState extends State<WaitingScreen> {
   // The moment the on-screen countdown reaches 0 (driver search time + admin arrangement time, from the city's settings).
   DateTime? _timerDeadline;
   NodeSocketSubscription? _socketSubscription;
-  // Progress display (no countdown): the search window runs from the order time to [_timerDeadline];
-  // before the order time is known, time on this screen over a nominal window is used.
-  final DateTime _screenOpenedAt = DateTime.now();
-  DateTime? _searchStartedAt;
+  // Progress display (no countdown): the search window runs from the order time to the REAL search deadline
+  // (System 2 window / guarantee wait) — never the 130 s safety timer. Until that is known, time on this
+  // screen over a nominal window is used. The bar never moves backwards.
+  final SearchProgressTracker _progress = SearchProgressTracker(screenOpenedAt: DateTime.now());
   // Trip card, from the order-details response this screen already fetches.
   String? _tripFare;
   String? _tripPickup;
@@ -380,7 +380,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
     if (!mounted) return;
     setState(() {
       // An order time in the future (clock skew) would freeze the bar; fall back to time on screen.
-      _searchStartedAt = orderedAt != null && !orderedAt.isAfter(DateTime.now()) ? orderedAt : null;
+      _progress.orderedAt = orderedAt != null && !orderedAt.isAfter(DateTime.now()) ? orderedAt : null;
       _tripFare = total == null ? null : '₹$total';
       _tripPickup = text(order['customer_paddress']);
       _tripDrop = text(order['customer_daddress']);
@@ -437,6 +437,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
       _guaranteePending = true;
       _guaranteeAmount = amount;
     });
+    if (deadline != null) _progress.searchDeadline = deadline;
     _startCountdown(deadline ?? _timerDeadline);
   }
 
@@ -462,6 +463,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
     if (deadline == null) return;
     final seconds = deadline.difference(DateTime.now()).inSeconds + _searchGraceSeconds;
     if (seconds <= 0) return;
+    _progress.searchDeadline = deadline;
     _timeoutTimer?.cancel();
     _countdownTicker?.cancel();
     _timeoutSet = false;
@@ -565,12 +567,7 @@ class _WaitingScreenState extends State<WaitingScreen> {
   Widget build(BuildContext context) {
     final p = AppPalette.current;
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    final f = searchFraction(
-      start: _searchStartedAt,
-      deadline: _timerDeadline,
-      screenOpenedAt: _screenOpenedAt,
-      now: DateTime.now(),
-    );
+    final f = _progress.fractionAt(DateTime.now());
     final stage = searchStage(f);
     Widget rise(int i, Widget child) =>
         reduceMotion ? child : _RiseIn(delay: Duration(milliseconds: 100 + 150 * i), child: child);
