@@ -52,7 +52,7 @@ class HomeHeader extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text('Shifter',
-                        maxLines: 1, style: AppText.title(p.onBrand).copyWith(letterSpacing: -0.3)),
+                        maxLines: 1, style: AppText.title(p.onBrand).copyWith(fontSize: 27, letterSpacing: -0.4)),
                   ),
                   if (walletBalance != null) ...[
                     PressableScale(
@@ -104,10 +104,10 @@ class HomeHeader extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Move anything,\nanywhere'.tr,
-                            style: AppText.title(p.onBrand).copyWith(height: 1.2, letterSpacing: -0.3)),
-                        const SizedBox(height: 4),
+                            style: AppText.title(p.onBrand).copyWith(fontSize: 28, height: 1.15, letterSpacing: -0.5)),
+                        const SizedBox(height: 6),
                         Text('Trucks, tempos and bikes'.tr,
-                            maxLines: 2, style: AppText.body(_sub).copyWith(fontSize: 13)),
+                            maxLines: 2, style: AppText.body(_sub).copyWith(fontSize: 15)),
                       ],
                     ),
                   ),
