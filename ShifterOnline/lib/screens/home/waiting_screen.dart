@@ -8,17 +8,14 @@ import 'package:goParcel/Api/config.dart';
 import 'package:goParcel/bottombar.dart';
 import 'package:goParcel/screens/home/home.dart';
 import 'package:goParcel/screens/home/trackingpoliyline.dart';
-import 'package:goParcel/screens/home/vehicle_booking_animation.dart';
 import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
-import 'package:goParcel/utils/colors.dart';
 import 'package:goParcel/utils/node_socket_manager.dart';
 import 'package:goParcel/utils/scheduled_order_watch.dart';
-import 'package:lottie/lottie.dart';
 import 'package:flutter/services.dart';
-import 'package:goParcel/screens/home/widgets/radar_pulse.dart';
+import 'package:goParcel/screens/home/search_progress.dart';
+import 'package:goParcel/screens/home/widgets/finding_driver_widgets.dart';
 import 'package:goParcel/theme/app_tokens.dart';
-import 'package:goParcel/theme/widgets/pressable_scale.dart';
 
 class WaitingScreen extends StatefulWidget {
   final String orderId;
@@ -47,7 +44,6 @@ class _WaitingScreenState extends State<WaitingScreen> {
   bool _isDisposed = false;
   bool _timeoutSet = false;
   bool _isCancelling = false;
-  int _remainingSeconds = 0;
   bool _handedOffToTracking = false;
   bool _recoveringOrder = false;
   double _guaranteeAmount = 0;
@@ -58,6 +54,14 @@ class _WaitingScreenState extends State<WaitingScreen> {
   // The moment the on-screen countdown reaches 0 (driver search time + admin arrangement time, from the city's settings).
   DateTime? _timerDeadline;
   NodeSocketSubscription? _socketSubscription;
+  // Progress display (no countdown): the search window runs from the order time to [_timerDeadline];
+  // before the order time is known, time on this screen over a nominal window is used.
+  final DateTime _screenOpenedAt = DateTime.now();
+  DateTime? _searchStartedAt;
+  // Trip card, from the order-details response this screen already fetches.
+  String? _tripFare;
+  String? _tripPickup;
+  String? _tripDrop;
 
   static void clearPersistedWaitingOrder() {
     getdata.remove(_waitingOrderKey);
@@ -326,6 +330,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
           : null;
       if (order == null) return;
 
+      _captureTripInfo(order);
+
       // The order knows its vehicle, so the animation is right even if this screen was reopened cold.
       final orderVehicle = (order['category'] ?? '').toString().trim();
       if (orderVehicle.isNotEmpty && orderVehicle != _vehicleName && mounted) {
@@ -360,6 +366,25 @@ class _WaitingScreenState extends State<WaitingScreen> {
     } finally {
       _recoveringOrder = false;
     }
+  }
+
+  /// Order time, fare and addresses for the progress bar and the trip card. Missing values stay null (hidden).
+  void _captureTripInfo(Map<String, dynamic> order) {
+    String? text(Object? v) {
+      final s = v?.toString().trim() ?? '';
+      return s.isEmpty || s == 'null' ? null : s;
+    }
+
+    final orderedAt = DateTime.tryParse(text(order['order_date']) ?? '');
+    final total = text(order['grand_total']);
+    if (!mounted) return;
+    setState(() {
+      // An order time in the future (clock skew) would freeze the bar; fall back to time on screen.
+      _searchStartedAt = orderedAt != null && !orderedAt.isAfter(DateTime.now()) ? orderedAt : null;
+      _tripFare = total == null ? null : '₹$total';
+      _tripPickup = text(order['customer_paddress']);
+      _tripDrop = text(order['customer_daddress']);
+    });
   }
 
   void _listenForAssignment() {
@@ -444,32 +469,21 @@ class _WaitingScreenState extends State<WaitingScreen> {
     _startTimeout(seconds, displayDeadline: deadline);
   }
 
-  /// Ticks the on-screen countdown once a second toward [deadline].
+  /// Refreshes the progress display once a second; [deadline] is the end of the search window.
   void _startCountdown(DateTime? deadline) {
     if (deadline != null) _timerDeadline = deadline;
     _countdownTicker?.cancel();
-    _refreshRemaining();
     if (mounted) setState(() {});
     _countdownTicker = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_isDisposed) { t.cancel(); return; }
-      setState(_refreshRemaining);
+      setState(() {});
     });
   }
 
-  void _refreshRemaining() {
-    final d = _timerDeadline;
-    _remainingSeconds = d == null ? 0 : d.difference(DateTime.now()).inSeconds.clamp(0, 1 << 30).toInt();
-  }
-
-  String _formatRemaining() {
-    final m = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
-    final s = (_remainingSeconds % 60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  /// The Booking Guarantee card under the timer: the compensation amount, the referral condition still
-  /// pending, or "no compensation" — all from backend data.
-  Widget _buildGuaranteeCard() {
+  /// The Booking Guarantee card: the compensation amount, the referral condition still pending, or
+  /// "no compensation" — all from backend data. In the [late] stage an active guarantee leads with
+  /// "You are covered".
+  Widget _buildGuaranteeCard({bool late = false}) {
     final p = AppPalette.current;
     final IconData icon;
     final Color tone;
@@ -492,7 +506,12 @@ class _WaitingScreenState extends State<WaitingScreen> {
       tone = p.successText;
       background = p.successTint;
       lines = [
-        Text("If we can't find a driver, you will receive compensation of".tr, style: bold),
+        if (late) ...[
+          Text("You are covered".tr, style: bold.copyWith(fontSize: 16)),
+          const SizedBox(height: 2),
+          Text("If we can't find a driver, you will receive compensation of".tr, style: soft),
+        ] else
+          Text("If we can't find a driver, you will receive compensation of".tr, style: bold),
         Text(rupeesText(_guaranteeAmount), style: bold.copyWith(color: p.successText, fontSize: 16)),
       ];
     } else {
@@ -508,8 +527,8 @@ class _WaitingScreenState extends State<WaitingScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tone.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: AppShadow.card,
       ),
       child: Row(
         children: [
@@ -545,23 +564,16 @@ class _WaitingScreenState extends State<WaitingScreen> {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
-    final isDark = notifier.getIsDark == true;
-    Widget pill({required IconData icon, required String text, double fontSize = 15}) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          decoration: BoxDecoration(
-            color: p.surface,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: AppShadow.card,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: p.brand, size: 20),
-              const SizedBox(width: 8),
-              Text(text, style: AppText.bodyStrong(p.ink).copyWith(fontSize: fontSize)),
-            ],
-          ),
-        );
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final f = searchFraction(
+      start: _searchStartedAt,
+      deadline: _timerDeadline,
+      screenOpenedAt: _screenOpenedAt,
+      now: DateTime.now(),
+    );
+    final stage = searchStage(f);
+    Widget rise(int i, Widget child) =>
+        reduceMotion ? child : _RiseIn(delay: Duration(milliseconds: 100 + 150 * i), child: child);
 
     return WillPopScope(
       onWillPop: () async {
@@ -569,142 +581,213 @@ class _WaitingScreenState extends State<WaitingScreen> {
         return false;
       },
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: (isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
-            .copyWith(statusBarColor: Colors.transparent),
+        // Dark status-bar icons on the orange hero, in both themes.
+        value: SystemUiOverlayStyle.dark.copyWith(statusBarColor: Colors.transparent),
         child: Scaffold(
           backgroundColor: p.canvas,
-          body: SafeArea(
-            child: Column(
-              children: [
-                const SocketStatusBanner(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          body: Column(
+            children: [
+              FindingDriverHero(
+                vehicleName: _vehicleName,
+                onBack: _navigateBackToHome,
+                onHome: _navigateBackToHome,
+              ),
+              const SocketStatusBanner(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      PressableScale(
-                        onTap: _navigateBackToHome,
-                        semanticLabel: 'Back'.tr,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(color: p.surface, shape: BoxShape.circle, border: Border.all(color: p.line)),
-                          child: Icon(Icons.arrow_back_rounded, color: p.ink, size: 22),
+                      rise(
+                        0,
+                        Column(children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _LiveDot(color: p.brand, animate: !reduceMotion),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: Text(
+                                  (stage == 3 ? "Still finding your driver" : "Finding your driver").tr,
+                                  textAlign: TextAlign.center,
+                                  style: AppText.title(p.ink),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          StageMessage(text: kSearchStageMessages[stage].tr),
+                        ]),
+                      ),
+                      const SizedBox(height: 16),
+                      rise(1, SearchProgressCard(progress: searchBar(f), notified: stage >= 1)),
+                      const SizedBox(height: 12),
+                      rise(
+                        2,
+                        WaitingTripCard(
+                          vehicle: _vehicleName,
+                          orderId: widget.orderId,
+                          fare: _tripFare,
+                          pickup: _tripPickup,
+                          drop: _tripDrop,
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: _navigateBackToHome,
-                        icon: Icon(Icons.home_outlined, color: p.ink, size: 18),
-                        label: Text("Home".tr, style: AppText.bodyStrong(p.ink).copyWith(fontSize: 14)),
-                        style: TextButton.styleFrom(
-                          backgroundColor: p.surface,
-                          minimumSize: const Size(44, 44),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                            side: BorderSide(color: p.line),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                      const SizedBox(height: 12),
+                      rise(3, _buildGuaranteeCard(late: stage == 3)),
+                      const SizedBox(height: 14),
+                      rise(
+                        4,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.notifications_none_rounded, size: 20, color: p.inkMuted),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                "You can leave this screen. We'll let you know when a driver accepts.".tr,
+                                style: AppText.caption(p.inkMuted).copyWith(fontSize: 13, height: 1.4),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // The booked vehicle, animated (Bike / E-Loader / 3 Wheeler / 4 Wheeler) inside the radar;
-                        // the generic Lottie is only the fallback when the vehicle is not known.
-                        RadarPulse(
-                          color: p.brand,
-                          size: 260,
-                          child: _vehicleName.isNotEmpty
-                              ? VehicleBookingAnimation(vehicleName: _vehicleName, height: 120)
-                              : Lottie.asset(
-                                  'assets/pickup&drop.json',
-                                  height: 130,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return SizedBox(
-                                      height: 120,
-                                      child: Center(child: CircularProgressIndicator(color: p.brand)),
-                                    );
-                                  },
-                                ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Finding Your Driver...".tr,
-                          style: AppText.title(p.ink).copyWith(fontSize: 24),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Please wait while we connect you with the nearest available delivery partner.".tr,
-                          style: AppText.body(p.inkMuted).copyWith(height: 1.4),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 18),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            pill(icon: Icons.receipt_long_outlined, text: "Order ID: #${widget.orderId}"),
-                            pill(
-                              icon: Icons.access_time_rounded,
-                              text: _timerDeadline != null ? _formatRemaining() : "—",
-                              fontSize: 18,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          "Searching for a driver".tr,
-                          style: AppText.caption(p.inkSubtle),
-                        ),
-                        const SizedBox(height: 18),
-                        _buildGuaranteeCard(),
-                        const SizedBox(height: 20),
-
-                        // ── Cancel Order Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: OutlinedButton(
-                            onPressed: _isCancelling ? null : _showCancelDialog,
-                            style: OutlinedButton.styleFrom(
-                              backgroundColor: p.surface,
-                              foregroundColor: p.danger,
-                              side: BorderSide(color: p.danger.withValues(alpha: 0.5), width: 1.5),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ),
-                            child: _isCancelling
-                                ? SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(color: p.danger, strokeWidth: 2.5),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.close_rounded, color: p.danger, size: 20),
-                                      const SizedBox(width: 8),
-                                      Text("Cancel Order".tr, style: AppText.bodyStrong(p.danger).copyWith(fontSize: 16)),
-                                    ],
-                                  ),
-                          ),
-                        ),
-                      ],
+              ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: TextButton(
+                    onPressed: _isCancelling ? null : _showCancelDialog,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(120, 44),
+                      foregroundColor: p.inkMuted,
                     ),
+                    child: _isCancelling
+                        ? SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(color: p.inkMuted, strokeWidth: 2),
+                          )
+                        : Text(
+                            "Cancel booking".tr,
+                            style: AppText.body(p.inkMuted).copyWith(
+                              fontSize: 14,
+                              decoration: TextDecoration.underline,
+                              decorationColor: p.inkMuted,
+                            ),
+                          ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Small brand dot beside the title that pulses a soft ring ("live").
+class _LiveDot extends StatefulWidget {
+  const _LiveDot({required this.color, required this.animate});
+  final Color color;
+  final bool animate;
+
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animate) _c.repeat();
+  }
+
+  @override
+  void didUpdateWidget(_LiveDot old) {
+    super.didUpdateWidget(old);
+    if (widget.animate && !_c.isAnimating) {
+      _c.repeat();
+    } else if (!widget.animate) {
+      _c.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final t = _c.value;
+        final ring = 8 * (t < .5 ? t * 2 : 2 - t * 2);
+        return Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: widget.color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(color: widget.color.withValues(alpha: .45 * (1 - ring / 8)), spreadRadius: ring),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One-time entrance: fades in and rises 24 px after [delay].
+class _RiseIn extends StatefulWidget {
+  const _RiseIn({required this.delay, required this.child});
+  final Duration delay;
+  final Widget child;
+
+  @override
+  State<_RiseIn> createState() => _RiseInState();
+}
+
+class _RiseInState extends State<_RiseIn> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
+  Timer? _start;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = Timer(widget.delay, () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _start?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = CurvedAnimation(parent: _c, curve: Curves.easeOut);
+    return AnimatedBuilder(
+      animation: a,
+      builder: (_, child) => Opacity(
+        opacity: a.value,
+        child: Transform.translate(offset: Offset(0, 24 * (1 - a.value)), child: child),
+      ),
+      child: widget.child,
     );
   }
 }
