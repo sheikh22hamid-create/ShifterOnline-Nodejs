@@ -1,10 +1,10 @@
+import 'package:goParcel/theme/app_tokens.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../Api/Api_wrapper.dart';
 import '../../services/settlement_api_service.dart';
-import '../../utils/Colors.dart';
 import '../../utils/node_socket_manager.dart';
 import '../../utils/receiver_pay_options.dart';
 import 'change_receiver_number_dialog.dart';
@@ -310,8 +310,8 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: AppPalette.current.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
@@ -327,7 +327,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                   width: 44,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: AppPalette.current.line,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -340,10 +340,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: linercolor.withOpacity(0.12),
+                      color: AppPalette.current.brand.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(Icons.payment_rounded, color: linercolor, size: 22),
+                    child: Icon(Icons.payment_rounded, color: AppPalette.current.brand, size: 22),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -352,10 +352,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                       children: [
                         Text(
                           "Trip Payment Settlement".tr,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontFamily: "Gilroy_Bold",
                             fontSize: 17,
-                            color: Colors.black87,
+                            color: AppPalette.current.ink,
                           ),
                         ),
                         Text(
@@ -363,7 +363,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                           style: TextStyle(
                             fontFamily: "Gilroy_Medium",
                             fontSize: 12.5,
-                            color: Colors.grey.shade600,
+                            color: AppPalette.current.inkMuted,
                           ),
                         ),
                       ],
@@ -381,9 +381,9 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: linercolor.withOpacity(0.08),
+                  color: AppPalette.current.brand.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: linercolor.withOpacity(0.3)),
+                  border: Border.all(color: AppPalette.current.brand.withOpacity(0.3)),
                 ),
                 child: Column(
                   children: [
@@ -394,7 +394,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                       style: TextStyle(
                         fontFamily: "Gilroy_Medium",
                         fontSize: 13,
-                        color: Colors.grey.shade700,
+                        color: AppPalette.current.inkMuted,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -403,7 +403,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                       style: TextStyle(
                         fontFamily: "Gilroy_Bold",
                         fontSize: 32,
-                        color: linercolor,
+                        color: AppPalette.current.brand,
                       ),
                     ),
                     if (isReceiverMode && markup > 0)
@@ -412,7 +412,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                         style: TextStyle(
                           fontFamily: "Gilroy_Medium",
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: AppPalette.current.inkMuted,
                         ),
                       ),
                     if (!isReceiverMode && fare > amountDue)
@@ -421,7 +421,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                         style: TextStyle(
                           fontFamily: "Gilroy_Medium",
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: AppPalette.current.inkMuted,
                         ),
                       ),
                   ],
@@ -455,13 +455,13 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F8EE),
+                    color: AppPalette.current.successTint,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF00C853).withOpacity(0.3)),
+                    border: Border.all(color: AppPalette.current.success.withOpacity(0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.check_circle_rounded, color: Color(0xFF00C853), size: 28),
+                      Icon(Icons.check_circle_rounded, color: AppPalette.current.success, size: 28),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -473,10 +473,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                                       ? "Payment complete".tr
                                       : "Driver confirmed ₹${amountDue.toStringAsFixed(0)} cash receipt!".tr)
                                   : "Online payment confirmed!".tr,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: "Gilroy_Bold",
                                 fontSize: 14,
-                                color: Color(0xFF007E33),
+                                color: AppPalette.current.success,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -485,7 +485,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                               style: TextStyle(
                                 fontFamily: "Gilroy_Medium",
                                 fontSize: 12,
-                                color: Colors.grey.shade700,
+                                color: AppPalette.current.inkMuted,
                               ),
                             ),
                           ],
@@ -498,7 +498,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                 ElevatedButton(
                   onPressed: () => Get.back(),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00C853),
+                    backgroundColor: AppPalette.current.success,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
@@ -536,11 +536,11 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                 ElevatedButton(
                   onPressed: () => Get.back(),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: linercolor,
+                    backgroundColor: AppPalette.current.brand,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
-                  child: Text("Close".tr, style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15, color: Colors.white)),
+                  child: Text("Close".tr, style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15, color: AppPalette.current.onBrand)),
                 ),
               ] else if (isReceiverMode) ...[
                 Container(
@@ -571,40 +571,40 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                 ElevatedButton(
                   onPressed: (_takingOver || _resending) ? null : _confirmTakeOver,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: linercolor,
+                    backgroundColor: AppPalette.current.brand,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   child: _takingOver
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppPalette.current.onBrand),
                         )
                       : Text("I'll pay myself".tr,
-                          style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15, color: Colors.white)),
+                          style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15, color: AppPalette.current.onBrand)),
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton(
                   onPressed: (_takingOver || _resending) ? null : _handleResend,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: linercolor),
+                    side: BorderSide(color: AppPalette.current.brand),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   child: _resending
                       ? SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: linercolor),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppPalette.current.brand),
                         )
                       : Text("Resend payment link".tr,
-                          style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 14.5, color: linercolor)),
+                          style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 14.5, color: AppPalette.current.brandText)),
                 ),
                 TextButton(
                   onPressed: (_takingOver || _resending) ? null : _handleChangeNumber,
                   child: Text("Change receiver number".tr,
-                      style: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 13, color: linercolor)),
+                      style: TextStyle(fontFamily: "Gilroy_Medium", fontSize: 13, color: AppPalette.current.brandText)),
                 ),
               ] else ...[
                 // Payment Method Options
@@ -612,10 +612,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                   isCustomerOwes
                       ? "Complete Payment Online".tr
                       : "Choose How to Pay".tr,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: "Gilroy_Bold",
                     fontSize: 14.5,
-                    color: Colors.black87,
+                    color: AppPalette.current.ink,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -628,10 +628,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: _choseDriver ? const Color(0xFFF1F8E9) : Colors.grey.shade50,
+                        color: _choseDriver ? AppPalette.current.successTint : AppPalette.current.canvas,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: _choseDriver ? const Color(0xFF7CB342) : Colors.grey.shade200,
+                          color: _choseDriver ? AppPalette.current.success : AppPalette.current.line,
                           width: _choseDriver ? 1.5 : 1.0,
                         ),
                       ),
@@ -646,7 +646,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                                   color: Colors.green.shade50,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.handshake_rounded, color: Color(0xFF2E7D32), size: 20),
+                                child: Icon(Icons.handshake_rounded, color: AppPalette.current.success, size: 20),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -655,10 +655,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                                   children: [
                                     Text(
                                       "Pay driver directly (cash/UPI)".tr,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontFamily: "Gilroy_Bold",
                                         fontSize: 14,
-                                        color: Colors.black87,
+                                        color: AppPalette.current.ink,
                                       ),
                                     ),
                                     Text(
@@ -666,7 +666,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                                       style: TextStyle(
                                         fontFamily: "Gilroy_Medium",
                                         fontSize: 11.5,
-                                        color: Colors.grey.shade600,
+                                        color: AppPalette.current.inkMuted,
                                       ),
                                     ),
                                   ],
@@ -679,7 +679,7 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               else if (_choseDriver)
-                                const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 22),
+                                Icon(Icons.check_circle_rounded, color: AppPalette.current.success, size: 22),
                             ],
                           ),
                           if (_choseDriver) ...[
@@ -687,24 +687,24 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: AppPalette.current.surface,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Row(
                                 children: [
-                                  const SizedBox(
+                                  SizedBox(
                                     width: 14,
                                     height: 14,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2E7D32)),
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppPalette.current.success),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
                                       "Give ₹${amountDue.toStringAsFixed(0)} to your driver - they will confirm in their app".tr,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontFamily: "Gilroy_Medium",
                                         fontSize: 12,
-                                        color: Color(0xFF2E7D32),
+                                        color: AppPalette.current.success,
                                       ),
                                     ),
                                   ),
@@ -726,19 +726,19 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
+                      color: AppPalette.current.canvas,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: linercolor.withOpacity(0.4)),
+                      border: Border.all(color: AppPalette.current.brand.withOpacity(0.4)),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: linercolor.withOpacity(0.1),
+                            color: AppPalette.current.brand.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.credit_card_rounded, color: linercolor, size: 20),
+                          child: Icon(Icons.credit_card_rounded, color: AppPalette.current.brand, size: 20),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -747,10 +747,10 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                             children: [
                               Text(
                                 "Pay online (UPI / Cards / Netbanking)".tr,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontFamily: "Gilroy_Bold",
                                   fontSize: 14,
-                                  color: Colors.black87,
+                                  color: AppPalette.current.ink,
                                 ),
                               ),
                               Text(
@@ -758,13 +758,13 @@ class _CustomerSettlementSheetState extends State<CustomerSettlementSheet> {
                                 style: TextStyle(
                                   fontFamily: "Gilroy_Medium",
                                   fontSize: 11.5,
-                                  color: Colors.grey.shade600,
+                                  color: AppPalette.current.inkMuted,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Icon(Icons.arrow_forward_ios_rounded, size: 14, color: linercolor),
+                        Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppPalette.current.brand),
                       ],
                     ),
                   ),

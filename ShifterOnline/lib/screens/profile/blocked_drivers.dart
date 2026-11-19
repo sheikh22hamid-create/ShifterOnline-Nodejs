@@ -1,3 +1,5 @@
+import 'package:goParcel/theme/widgets/app_top_bar.dart';
+import 'package:goParcel/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:goParcel/Api/Api_wrapper.dart';
@@ -74,27 +76,27 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: notifier.getBgColor,
+        backgroundColor: AppPalette.current.surface,
         title: Text(
           "Unblock Driver".tr,
-          style: TextStyle(fontFamily: "Gilroy_Bold", color: notifier.text),
+          style: TextStyle(fontFamily: "Gilroy_Bold", color: AppPalette.current.ink),
         ),
         content: Text(
           "${driver["name"] ?? "This driver"} ${"can be offered your orders again.".tr}",
-          style: TextStyle(fontFamily: "Gilroy_Medium", color: notifier.text.withOpacity(0.8)),
+          style: TextStyle(fontFamily: "Gilroy_Medium", color: AppPalette.current.ink.withOpacity(0.8)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text("Cancel".tr, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium")),
+            child: Text("Cancel".tr, style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: "Gilroy_Medium")),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: linercolor,
+              backgroundColor: AppPalette.current.brand,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text("Unblock".tr, style: const TextStyle(color: Colors.white, fontFamily: "Gilroy_Bold")),
+            child: Text("Unblock".tr, style: TextStyle(color: AppPalette.current.onBrand, fontFamily: "Gilroy_Bold")),
           ),
         ],
       ),
@@ -122,25 +124,14 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
     notifier = Provider.of<ColorNotifier>(context, listen: true);
 
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: linercolor,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Get.back(),
-        ),
-        title: Text(
-          "Blocked Drivers".tr,
-          style: const TextStyle(color: Colors.white, fontFamily: "Gilroy_Bold"),
-        ),
-      ),
+      backgroundColor: AppPalette.current.canvas,
+      appBar: AppTopBar(title: "Blocked Drivers".tr),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: linercolor))
+          ? Center(child: CircularProgressIndicator(color: AppPalette.current.brand))
           : _drivers.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  color: linercolor,
+                  color: AppPalette.current.brand,
                   onRefresh: _fetchBlockedDrivers,
                   child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -163,7 +154,7 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
       style: TextStyle(
         fontFamily: "Gilroy_Medium",
         fontSize: 12.5,
-        color: notifier.text.withOpacity(0.6),
+        color: AppPalette.current.ink.withOpacity(0.6),
       ),
     );
   }
@@ -175,11 +166,11 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.block_rounded, size: 80, color: linercolor.withOpacity(0.4)),
+            Icon(Icons.block_rounded, size: 80, color: AppPalette.current.brand.withOpacity(0.4)),
             const SizedBox(height: 16),
             Text(
               "No Blocked Drivers".tr,
-              style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 18, color: notifier.text),
+              style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 18, color: AppPalette.current.ink),
             ),
             const SizedBox(height: 8),
             Text(
@@ -188,7 +179,7 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
               style: TextStyle(
                 fontFamily: "Gilroy_Medium",
                 fontSize: 14,
-                color: notifier.text.withOpacity(0.5),
+                color: AppPalette.current.ink.withOpacity(0.5),
               ),
             ),
           ],
@@ -207,7 +198,7 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: notifier.getBgColor,
+        color: AppPalette.current.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2)),
@@ -218,11 +209,11 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
           Container(
             height: 50,
             width: 50,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey.shade300),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: AppPalette.current.line),
             child: Center(
               child: Text(
                 initials,
-                style: TextStyle(color: Colors.grey.shade700, fontFamily: "Gilroy_Bold", fontSize: 17),
+                style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: "Gilroy_Bold", fontSize: 17),
               ),
             ),
           ),
@@ -233,13 +224,13 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
               children: [
                 Text(
                   name,
-                  style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15, color: notifier.text),
+                  style: TextStyle(fontFamily: "Gilroy_Bold", fontSize: 15, color: AppPalette.current.ink),
                 ),
                 if (vehicle.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.two_wheeler_outlined, size: 14, color: notifier.text.withOpacity(0.6)),
+                      Icon(Icons.two_wheeler_outlined, size: 14, color: AppPalette.current.ink.withOpacity(0.6)),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -248,7 +239,7 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
                           style: TextStyle(
                             fontFamily: "Gilroy_Medium",
                             fontSize: 13,
-                            color: notifier.text.withOpacity(0.6),
+                            color: AppPalette.current.ink.withOpacity(0.6),
                           ),
                         ),
                       ),
@@ -261,12 +252,12 @@ class _BlockedDriversScreenState extends State<BlockedDriversScreen> {
           OutlinedButton(
             onPressed: () => _unblock(driver),
             style: OutlinedButton.styleFrom(
-              side: BorderSide(color: linercolor),
+              side: BorderSide(color: AppPalette.current.brand),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             child: Text(
               "Unblock".tr,
-              style: TextStyle(color: linercolor, fontFamily: "Gilroy_Bold", fontSize: 12.5),
+              style: TextStyle(color: AppPalette.current.brandText, fontFamily: "Gilroy_Bold", fontSize: 12.5),
             ),
           ),
         ],

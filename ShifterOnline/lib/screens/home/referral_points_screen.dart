@@ -1,3 +1,5 @@
+import 'package:goParcel/theme/widgets/app_top_bar.dart';
+import 'package:goParcel/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -86,23 +88,16 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
   @override
   Widget build(BuildContext context) {
     final notifier = Provider.of<ColorNotifier>(context, listen: true);
-    return Scaffold(
-      backgroundColor: linercolor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: linercolor,
-        centerTitle: true,
-        iconTheme: IconThemeData(color: whitecolor),
-        title: Text('Referral Points'.tr, style: TextStyle(color: whitecolor, fontFamily: 'Gilroy_Bold')),
-      ),
+    return Scaffold(backgroundColor: AppPalette.current.canvas,
+      appBar: AppTopBar(title: 'Referral Points'.tr),
       body: Container(
         width: Get.width,
         decoration: BoxDecoration(
-          color: notifier.lightBgColor,
+          color: AppPalette.current.canvas,
           borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
         ),
         child: _loading
-            ? Center(child: CircularProgressIndicator(color: notifier.darklinercolor))
+            ? Center(child: CircularProgressIndicator(color: AppPalette.current.brand))
             : _failed
                 ? _message(notifier, 'Could not load your points history. Pull back and try again.'.tr, retry: true)
                 : RefreshIndicator(
@@ -114,7 +109,7 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
                       children: [
                         _summaryCard(),
                         const SizedBox(height: 18),
-                        Text('History'.tr, style: TextStyle(color: notifier.text, fontSize: 18, fontFamily: 'Gilroy_Bold')),
+                        Text('History'.tr, style: TextStyle(color: AppPalette.current.ink, fontSize: 18, fontFamily: 'Gilroy_Bold')),
                         const SizedBox(height: 8),
                         if (_rows.isEmpty)
                           Padding(
@@ -126,7 +121,7 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
                         if (_loadingMore)
                           Padding(
                             padding: const EdgeInsets.all(16),
-                            child: Center(child: CircularProgressIndicator(color: notifier.darklinercolor)),
+                            child: Center(child: CircularProgressIndicator(color: AppPalette.current.brand)),
                           ),
                       ],
                     ),
@@ -140,7 +135,7 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(text, textAlign: TextAlign.center, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium')),
+          Text(text, textAlign: TextAlign.center, style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: 'Gilroy_Medium')),
           if (retry) ...[
             const SizedBox(height: 12),
             TextButton(onPressed: () { setState(() { _loading = true; }); _load(); }, child: Text('Retry'.tr)),
@@ -156,33 +151,33 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
             children: [
               Text('$value', style: TextStyle(color: color, fontSize: 18, fontFamily: 'Gilroy_Bold')),
               const SizedBox(height: 2),
-              Text(label.tr, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Gilroy_Medium')),
+              Text(label.tr, style: TextStyle(color: AppPalette.current.onBrand.withValues(alpha: 0.75), fontSize: 12, fontFamily: 'Gilroy_Medium')),
             ],
           ),
         );
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: linercolor,
+        color: AppPalette.current.brand,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: linercolor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))],
+        boxShadow: [BoxShadow(color: AppPalette.current.brand.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))],
       ),
       child: Column(
         children: [
-          Text('Available points'.tr, style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Gilroy_Medium')),
+          Text('Available points'.tr, style: TextStyle(color: AppPalette.current.onBrand.withValues(alpha: 0.75), fontSize: 13, fontFamily: 'Gilroy_Medium')),
           const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.stars_rounded, color: Colors.amber, size: 28),
               const SizedBox(width: 8),
-              Text('$_balance', style: const TextStyle(color: Colors.white, fontSize: 32, fontFamily: 'Gilroy_Bold')),
+              Text('$_balance', style: TextStyle(color: AppPalette.current.onBrand, fontSize: 32, fontFamily: 'Gilroy_Bold')),
             ],
           ),
           const SizedBox(height: 16),
           Row(children: [
             stat('Earned', _earned, const Color(0xFF86EFAC)),
-            Container(width: 1, height: 28, color: Colors.white24),
+            Container(width: 1, height: 28, color: AppPalette.current.onBrand.withValues(alpha: 0.2)),
             stat('Used', _used, const Color(0xFFFCA5A5)),
           ]),
         ],
@@ -193,15 +188,15 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
   Widget _rowTile(ColorNotifier notifier, Map<String, dynamic> r) {
     final points = int.tryParse(r['points'].toString()) ?? 0;
     final credit = points >= 0;
-    final color = credit ? const Color(0xFF00C853) : const Color(0xFFE53935);
+    final color = credit ? AppPalette.current.success : AppPalette.current.danger;
     final note = (r['note'] ?? '').toString().trim();
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: notifier.getBgColor,
+        color: AppPalette.current.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+        border: Border.all(color: AppPalette.current.line.withOpacity(0.6)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,13 +211,13 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text((r['source_label'] ?? 'Points').toString().tr, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 14)),
+                Text((r['source_label'] ?? 'Points').toString().tr, style: TextStyle(color: AppPalette.current.ink, fontFamily: 'Gilroy_Bold', fontSize: 14)),
                 if (note.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(note, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12)),
+                  Text(note, style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: 'Gilroy_Medium', fontSize: 12)),
                 ],
                 const SizedBox(height: 4),
-                Text((r['created_at'] ?? '').toString(), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+                Text((r['created_at'] ?? '').toString(), style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: 'Gilroy_Medium', fontSize: 11)),
               ],
             ),
           ),
@@ -232,7 +227,7 @@ class _ReferralPointsScreenState extends State<ReferralPointsScreen> {
             children: [
               Text('${credit ? '+' : ''}$points', style: TextStyle(color: color, fontFamily: 'Gilroy_Bold', fontSize: 16)),
               const SizedBox(height: 2),
-              Text('${'Balance'.tr}: ${r['balance_after']}', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+              Text('${'Balance'.tr}: ${r['balance_after']}', style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: 'Gilroy_Medium', fontSize: 11)),
             ],
           ),
         ],

@@ -1,3 +1,5 @@
+import 'package:goParcel/theme/widgets/app_top_bar.dart';
+import 'package:goParcel/theme/app_tokens.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -154,7 +156,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     // 1. Pickup Marker (Green Pin)
     final pickupIcon = await _createNumberedPin(
       icon: Icons.arrow_upward_rounded,
-      color: const Color(0xff10B981),
+      color: AppPalette.current.success,
       isArrow: true,
     );
     newMarkers.add(
@@ -172,7 +174,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
       final stopLatLng = LatLng(_number(stop['lat_map']), _number(stop['long_map']));
       final stopIcon = await _createNumberedPin(
         label: "${i + 1}",
-        color: linercolor,
+        color: AppPalette.current.brand,
         isArrow: false,
       );
       newMarkers.add(
@@ -188,7 +190,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     // 3. Drop Marker (Red Pin)
     final dropIcon = await _createNumberedPin(
       icon: Icons.arrow_downward_rounded,
-      color: const Color(0xffEF4444),
+      color: AppPalette.current.danger,
       isArrow: true,
     );
     newMarkers.add(
@@ -459,28 +461,11 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final notifier = Provider.of<ColorNotifier>(context, listen: true);
-    final themeColor = notifier.darklinercolor;
+    Provider.of<ColorNotifier>(context, listen: true); // rebuild when the theme changes
 
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        backgroundColor: notifier.lightBgColor,
-        foregroundColor: notifier.text,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Get.back(),
-        ),
-        title: Text(
-          "Add Stops",
-          style: TextStyle(
-            fontFamily: 'Gilroy_Bold',
-            fontSize: 19,
-            color: notifier.text,
-          ),
-        ),
-      ),
+      backgroundColor: AppPalette.current.canvas,
+      appBar: AppTopBar(title: "Add Stops".tr),
       body: SafeArea(
         top: false,
         child: Column(
@@ -489,9 +474,9 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: notifier.getBgColor,
+                color: AppPalette.current.surface,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+                border: Border.all(color: AppPalette.current.line.withOpacity(0.6)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.04),
@@ -562,14 +547,14 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_circle, color: linercolor, size: 20),
+                          Icon(Icons.add_circle, color: AppPalette.current.brand, size: 20),
                           const SizedBox(width: 8),
                           Text(
                             "Add Stop",
                             style: TextStyle(
                               fontFamily: 'Gilroy_Bold',
                               fontSize: 14,
-                              color: linercolor,
+                              color: AppPalette.current.brand,
                             ),
                           ),
                         ],
@@ -586,7 +571,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                 margin: const EdgeInsets.fromLTRB(14, 6, 14, 10),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+                  border: Border.all(color: AppPalette.current.line.withOpacity(0.6)),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Stack(
@@ -601,7 +586,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                         Polyline(
                           polylineId: const PolylineId('stops_route'),
                           points: _roadRoute,
-                          color: linercolor,
+                          color: AppPalette.current.brand,
                           width: 5,
                         ),
                       },
@@ -622,7 +607,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: notifier.getBgColor.withOpacity(0.9),
+                            color: AppPalette.current.surface.withOpacity(0.9),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const SizedBox(
@@ -641,7 +626,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
             Container(
               padding: EdgeInsets.fromLTRB(16, 8, 16, MediaQuery.of(context).padding.bottom + 8),
               decoration: BoxDecoration(
-                color: notifier.getBgColor,
+                color: AppPalette.current.surface,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.05),
@@ -656,8 +641,8 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                 child: ElevatedButton(
                   onPressed: _onConfirm,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: linercolor,
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppPalette.current.brand,
+                    foregroundColor: AppPalette.current.onBrand,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 0,
                   ),
@@ -687,7 +672,6 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
     VoidCallback? onDelete,
     int? dragIndex, // set for reorderable stop rows; pickup/drop have no handle
   }) {
-    final notifier = Provider.of<ColorNotifier>(context, listen: false);
 
     return InkWell(
       onTap: onTap,
@@ -700,8 +684,8 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
               Container(
                 width: 28,
                 height: 28,
-                decoration: const BoxDecoration(
-                  color: Color(0xff10B981),
+                decoration: BoxDecoration(
+                  color: AppPalette.current.success,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
@@ -710,8 +694,8 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
               Container(
                 width: 28,
                 height: 28,
-                decoration: const BoxDecoration(
-                  color: Color(0xffEF4444),
+                decoration: BoxDecoration(
+                  color: AppPalette.current.danger,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.arrow_downward_rounded, color: Colors.white, size: 16),
@@ -721,14 +705,14 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: linercolor,
+                  color: AppPalette.current.brand,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   child: Text(
                     indexBadge ?? "1",
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppPalette.current.onBrand,
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 13,
                     ),
@@ -751,7 +735,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                     style: TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 13.5,
-                      color: notifier.text,
+                      color: AppPalette.current.ink,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -762,7 +746,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                     style: TextStyle(
                       fontFamily: 'Gilroy_Medium',
                       fontSize: 11.5,
-                      color: greaycolor,
+                      color: AppPalette.current.inkMuted,
                     ),
                   ),
                 ],
@@ -777,7 +761,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                 index: dragIndex,
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.drag_handle_rounded, color: notifier.text.withOpacity(0.5), size: 22),
+                  child: Icon(Icons.drag_handle_rounded, color: AppPalette.current.ink.withOpacity(0.5), size: 22),
                 ),
               ),
 
@@ -788,7 +772,7 @@ class _AddStopsScreenState extends State<AddStopsScreen> {
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.all(2.0),
-                  child: Icon(Icons.cancel_rounded, color: const Color(0xff64748B), size: 20),
+                  child: Icon(Icons.cancel_rounded, color: AppPalette.current.inkMuted, size: 20),
                 ),
               ),
             ],

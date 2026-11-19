@@ -1,5 +1,6 @@
 // ignore_for_file: file_names, use_build_context_synchronously
 
+import 'package:goParcel/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -172,8 +173,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
-          children: const [
-            Icon(Icons.contact_phone_rounded, color: Color(0xFFFA4500), size: 24),
+          children: [
+            Icon(Icons.contact_phone_rounded, color: AppPalette.current.brand, size: 24),
             SizedBox(width: 8),
             Text(
               "Confirm Submission",
@@ -187,10 +188,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
         ),
         content: Text(
           "Aap ${_selectedPhoneNumbers.length} contacts ko \"$typeLabel\" ke roop me submit kar rahe hain.\n\nVerify hone aur unki pehli ride complete hone par aapko 100 Reward Points milenge.\n\nKya aap aage badhna chahte hain?",
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Gilroy_Medium',
             fontSize: 14,
-            color: Color(0xFF334155),
+            color: AppPalette.current.ink,
             height: 1.4,
           ),
         ),
@@ -202,10 +203,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFA4500),
+              backgroundColor: AppPalette.current.brand,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text("Submit Karein", style: TextStyle(color: Colors.white)),
+            child: Text("Submit Karein", style: TextStyle(color: AppPalette.current.onBrand)),
           ),
         ],
       ),
@@ -257,8 +258,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
-          children: const [
-            Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 26),
+          children: [
+            Icon(Icons.check_circle_rounded, color: AppPalette.current.success, size: 26),
             SizedBox(width: 8),
             Text(
               "Submission Status",
@@ -273,29 +274,29 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
             children: [
               Text(
                 "$accepted $typeName contact(s) successfully submit ho gaye hain!",
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 14,
-                  color: Color(0xFF0F172A),
+                  color: AppPalette.current.ink,
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 "Humari verification team inhein verify karegi. Jaise hi ye join karke pehli booking karenge, aapko reward points credit ho jayenge.",
                 style: TextStyle(
                   fontFamily: 'Gilroy_Medium',
                   fontSize: 12,
-                  color: Color(0xFF64748B),
+                  color: AppPalette.current.inkMuted,
                 ),
               ),
               if (skipped.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Text(
                   "${skipped.length} contact(s) skip huye:",
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Gilroy_Bold',
                     fontSize: 13,
-                    color: Color(0xFFD97706),
+                    color: AppPalette.current.warning,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -314,10 +315,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                     padding: const EdgeInsets.only(bottom: 3),
                     child: Text(
                       "• $phone ($reasonText)",
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Gilroy_Regular',
                         fontSize: 12,
-                        color: Color(0xFF475569),
+                        color: AppPalette.current.inkMuted,
                       ),
                     ),
                   );
@@ -369,24 +370,24 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppPalette.current.canvas,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
+        backgroundColor: AppPalette.current.surface,
         centerTitle: false,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF0F172A), size: 20),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppPalette.current.ink, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text(
               "Refer from Contacts",
               style: TextStyle(
                 fontFamily: 'Gilroy_Bold',
                 fontSize: 18,
-                color: Color(0xFF0F172A),
+                color: AppPalette.current.ink,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -395,14 +396,14 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
               style: TextStyle(
                 fontFamily: 'Gilroy_Medium',
                 fontSize: 11,
-                color: Color(0xFF64748B),
+                color: AppPalette.current.inkMuted,
               ),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0F172A)),
+            icon: Icon(Icons.refresh_rounded, color: AppPalette.current.ink),
             tooltip: "Refresh",
             onPressed: () {
               if (_activeTab == 0) {
@@ -437,7 +438,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
   Widget _buildCategorySwitcher() {
     final isCustomer = _selectedLeadType == 'customer';
     return Container(
-      color: Colors.white,
+      color: AppPalette.current.surface,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,10 +452,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                     decoration: BoxDecoration(
-                      color: isCustomer ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
+                      color: isCustomer ? const Color(0xFF2563EB) : AppPalette.current.divider,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isCustomer ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                        color: isCustomer ? const Color(0xFF2563EB) : AppPalette.current.line,
                       ),
                     ),
                     child: Row(
@@ -463,7 +464,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                         Icon(
                           Icons.person_outline_rounded,
                           size: 18,
-                          color: isCustomer ? Colors.white : const Color(0xFF475569),
+                          color: isCustomer ? Colors.white : AppPalette.current.inkMuted,
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -472,7 +473,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: isCustomer ? Colors.white : const Color(0xFF475569),
+                            color: isCustomer ? Colors.white : AppPalette.current.inkMuted,
                           ),
                         ),
                       ],
@@ -488,10 +489,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                     decoration: BoxDecoration(
-                      color: !isCustomer ? const Color(0xFF7C3AED) : const Color(0xFFF1F5F9),
+                      color: !isCustomer ? const Color(0xFF7C3AED) : AppPalette.current.divider,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: !isCustomer ? const Color(0xFF7C3AED) : const Color(0xFFE2E8F0),
+                        color: !isCustomer ? const Color(0xFF7C3AED) : AppPalette.current.line,
                       ),
                     ),
                     child: Row(
@@ -500,7 +501,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                         Icon(
                           Icons.local_shipping_outlined,
                           size: 18,
-                          color: !isCustomer ? Colors.white : const Color(0xFF475569),
+                          color: !isCustomer ? Colors.white : AppPalette.current.inkMuted,
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -509,7 +510,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                             fontFamily: 'Gilroy_Bold',
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: !isCustomer ? Colors.white : const Color(0xFF475569),
+                            color: !isCustomer ? Colors.white : AppPalette.current.inkMuted,
                           ),
                         ),
                       ],
@@ -524,10 +525,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
             isCustomer
                 ? "सामान / शिफ्टिंग बुक करने वाले दोस्तों या ग्राहकों के लिए Customer चुनें।"
                 : "गाड़ी, टेम्पो, छोटा हाथी चलाने वाले ड्राइवर साथियों के लिए Driver चुनें।",
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Gilroy_Medium',
               fontSize: 11,
-              color: Color(0xFF64748B),
+              color: AppPalette.current.inkMuted,
             ),
           ),
         ],
@@ -537,12 +538,12 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
 
   Widget _buildTabBar() {
     return Container(
-      color: Colors.white,
+      color: AppPalette.current.surface,
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       child: Container(
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+          color: AppPalette.current.divider,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -553,7 +554,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: _activeTab == 0 ? Colors.white : Colors.transparent,
+                    color: _activeTab == 0 ? AppPalette.current.surface : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: _activeTab == 0
                         ? [
@@ -576,8 +577,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: _activeTab == 0
-                              ? const Color(0xFF0F172A)
-                              : const Color(0xFF64748B),
+                              ? AppPalette.current.ink
+                              : AppPalette.current.inkMuted,
                         ),
                       ),
                       if (_selectedPhoneNumbers.isNotEmpty) ...[
@@ -585,13 +586,13 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFA4500),
+                            color: AppPalette.current.brand,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             "${_selectedPhoneNumbers.length}",
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: AppPalette.current.onBrand,
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
                             ),
@@ -612,7 +613,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: _activeTab == 1 ? Colors.white : Colors.transparent,
+                    color: _activeTab == 1 ? AppPalette.current.surface : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     boxShadow: _activeTab == 1
                         ? [
@@ -632,8 +633,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: _activeTab == 1
-                          ? const Color(0xFF0F172A)
-                          : const Color(0xFF64748B),
+                          ? AppPalette.current.ink
+                          : AppPalette.current.inkMuted,
                     ),
                   ),
                 ),
@@ -665,23 +666,23 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                 child: const Icon(Icons.contacts_rounded, size: 36, color: Color(0xFF4F46E5)),
               ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 "Contacts Permission Required",
                 style: TextStyle(
                   fontFamily: 'Gilroy_Bold',
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
+                  color: AppPalette.current.ink,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 "Apne phone contacts se doston ya drivers ko refer karne ke liye contacts access enable karein.",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: 'Gilroy_Medium',
                   fontSize: 13,
-                  color: Color(0xFF64748B),
+                  color: AppPalette.current.inkMuted,
                   height: 1.4,
                 ),
               ),
@@ -691,8 +692,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                 icon: const Icon(Icons.lock_open_rounded, size: 18),
                 label: const Text("Allow Contacts Access"),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFA4500),
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppPalette.current.brand,
+                  foregroundColor: AppPalette.current.onBrand,
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
@@ -704,8 +705,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
     }
 
     if (_isLoadingContacts) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFA4500)),
+      return Center(
+        child: CircularProgressIndicator(color: AppPalette.current.brand),
       );
     }
 
@@ -713,7 +714,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
       children: [
         // Search bar & Select all row
         Container(
-          color: Colors.white,
+          color: AppPalette.current.surface,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: Column(
             children: [
@@ -722,11 +723,11 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                 onChanged: _filterContacts,
                 decoration: InputDecoration(
                   hintText: "Search by name or number...",
-                  hintStyle: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 13, color: Color(0xFF94A3B8)),
-                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 20),
+                  hintStyle: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 13, color: AppPalette.current.inkSubtle),
+                  prefixIcon: Icon(Icons.search_rounded, color: AppPalette.current.inkSubtle, size: 20),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18, color: Color(0xFF94A3B8)),
+                          icon: Icon(Icons.clear_rounded, size: 18, color: AppPalette.current.inkSubtle),
                           onPressed: () {
                             _searchController.clear();
                             _filterContacts("");
@@ -735,15 +736,15 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                       : null,
                   isDense: true,
                   filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
+                  fillColor: AppPalette.current.canvas,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    borderSide: BorderSide(color: AppPalette.current.line),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    borderSide: BorderSide(color: AppPalette.current.line),
                   ),
                 ),
               ),
@@ -753,7 +754,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                 children: [
                   Text(
                     "${_filteredContacts.length} contacts found",
-                    style: const TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12, color: Color(0xFF64748B)),
+                    style: TextStyle(fontFamily: 'Gilroy_Medium', fontSize: 12, color: AppPalette.current.inkMuted),
                   ),
                   TextButton.icon(
                     onPressed: _toggleSelectAll,
@@ -762,16 +763,16 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                           ? Icons.check_box_rounded
                           : Icons.check_box_outline_blank_rounded,
                       size: 18,
-                      color: const Color(0xFFFA4500),
+                      color: AppPalette.current.brand,
                     ),
                     label: Text(
                       _selectedPhoneNumbers.length == _filteredContacts.length && _filteredContacts.isNotEmpty
                           ? "Deselect All"
                           : "Select All",
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 12,
-                        color: Color(0xFFFA4500),
+                        color: AppPalette.current.brand,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -788,13 +789,13 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
               ? Center(
                   child: Text(
                     "No contacts found",
-                    style: TextStyle(fontFamily: 'Gilroy_Medium', color: Colors.grey.shade500),
+                    style: TextStyle(fontFamily: 'Gilroy_Medium', color: AppPalette.current.inkSubtle),
                   ),
                 )
               : ListView.separated(
                   padding: const EdgeInsets.only(top: 8, bottom: 90),
                   itemCount: _filteredContacts.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, indent: 68, color: Color(0xFFF1F5F9)),
+                  separatorBuilder: (_, __) => Divider(height: 1, indent: 68, color: AppPalette.current.divider),
                   itemBuilder: (context, index) {
                     final c = _filteredContacts[index];
                     final name = c["name"] ?? "";
@@ -820,19 +821,19 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        color: isSelected ? const Color(0xFFFFF7ED) : Colors.white,
+                        color: isSelected ? AppPalette.current.brandTint : AppPalette.current.surface,
                         child: Row(
                           children: [
                             CircleAvatar(
                               radius: 20,
-                              backgroundColor: isSelected ? const Color(0xFFFFEDD5) : const Color(0xFFEEF2FF),
+                              backgroundColor: isSelected ? AppPalette.current.brandTint : const Color(0xFFEEF2FF),
                               child: Text(
                                 initial,
                                 style: TextStyle(
                                   fontFamily: 'Gilroy_Bold',
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? const Color(0xFFFA4500) : const Color(0xFF4F46E5),
+                                  color: isSelected ? AppPalette.current.brand : const Color(0xFF4F46E5),
                                 ),
                               ),
                             ),
@@ -843,11 +844,11 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                                 children: [
                                   Text(
                                     name,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontFamily: 'Gilroy_Bold',
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF0F172A),
+                                      color: AppPalette.current.ink,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -855,10 +856,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                                   const SizedBox(height: 2),
                                   Text(
                                     formattedPhone,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontFamily: 'Gilroy_Regular',
                                       fontSize: 12,
-                                      color: Color(0xFF64748B),
+                                      color: AppPalette.current.inkMuted,
                                     ),
                                   ),
                                 ],
@@ -866,7 +867,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                             ),
                             Checkbox(
                               value: isSelected,
-                              activeColor: const Color(0xFFFA4500),
+                              activeColor: AppPalette.current.brand,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                               onChanged: (val) {
                                 setState(() {
@@ -897,7 +898,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppPalette.current.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -917,7 +918,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
               backgroundColor: _selectedLeadType == 'driver'
                   ? const Color(0xFF7C3AED)
                   : const Color(0xFF2563EB),
-              disabledBackgroundColor: const Color(0xFFCBD5E1),
+              disabledBackgroundColor: AppPalette.current.line,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: hasSelection ? 2 : 0,
             ),
@@ -946,8 +947,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
 
   Widget _buildMyLeadsTab() {
     if (_isLoadingLeads) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFA4500)),
+      return Center(
+        child: CircularProgressIndicator(color: AppPalette.current.brand),
       );
     }
 
@@ -962,7 +963,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
     }
 
     return RefreshIndicator(
-      color: const Color(0xFFFA4500),
+      color: AppPalette.current.brand,
       onRefresh: _fetchMyLeads,
       child: ListView(
         padding: const EdgeInsets.all(16),
@@ -970,11 +971,11 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
           // 3 Metric Cards
           Row(
             children: [
-              Expanded(child: _buildKpiBox("Total Submitted", "$total", const Color(0xFF0F172A), const Color(0xFFF1F5F9))),
+              Expanded(child: _buildKpiBox("Total Submitted", "$total", AppPalette.current.ink, AppPalette.current.divider)),
               const SizedBox(width: 8),
               Expanded(child: _buildKpiBox("Verified", "$verified", const Color(0xFF2563EB), const Color(0xFFEFF6FF))),
               const SizedBox(width: 8),
-              Expanded(child: _buildKpiBox("Rewarded", "$converted", const Color(0xFF16A34A), const Color(0xFFF0FDF4))),
+              Expanded(child: _buildKpiBox("Rewarded", "$converted", AppPalette.current.success, AppPalette.current.successTint)),
             ],
           ),
           const SizedBox(height: 16),
@@ -984,27 +985,27 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
             Center(
               child: Column(
                 children: [
-                  Icon(Icons.inbox_rounded, size: 54, color: Colors.grey.shade400),
+                  Icon(Icons.inbox_rounded, size: 54, color: AppPalette.current.inkSubtle),
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     "No leads submitted yet",
                     style: TextStyle(
                       fontFamily: 'Gilroy_Bold',
                       fontSize: 16,
-                      color: Color(0xFF64748B),
+                      color: AppPalette.current.inkMuted,
                     ),
                   ),
                   const SizedBox(height: 6),
-                  const Text(
+                  Text(
                     "Switch to \"Select Contacts\" tab to refer your friends.",
-                    style: TextStyle(fontFamily: 'Gilroy_Regular', fontSize: 12, color: Color(0xFF94A3B8)),
+                    style: TextStyle(fontFamily: 'Gilroy_Regular', fontSize: 12, color: AppPalette.current.inkSubtle),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => setState(() => _activeTab = 0),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFA4500),
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppPalette.current.brand,
+                      foregroundColor: AppPalette.current.onBrand,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     child: const Text("Select Contacts Now"),
@@ -1042,10 +1043,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
           const SizedBox(height: 2),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Gilroy_Medium',
               fontSize: 11,
-              color: Color(0xFF64748B),
+              color: AppPalette.current.inkMuted,
             ),
             textAlign: TextAlign.center,
           ),
@@ -1075,8 +1076,8 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
     }
 
     // Status badge configurations
-    Color badgeBg = const Color(0xFFFEF3C7);
-    Color badgeText = const Color(0xFFD97706);
+    Color badgeBg = AppPalette.current.warningTint;
+    Color badgeText = AppPalette.current.warning;
     String badgeLabel = "⏳ Pending";
     String description = "Verification in progress. Ops team will call this contact.";
 
@@ -1086,18 +1087,18 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
       badgeLabel = "✓ Verified";
       description = "Verified! Reward credited on 1st ride/order.";
     } else if (status == "converted") {
-      badgeBg = const Color(0xFFDCFCE7);
-      badgeText = const Color(0xFF16A34A);
+      badgeBg = AppPalette.current.successTint;
+      badgeText = AppPalette.current.success;
       badgeLabel = "Rewarded";
       description = "1st Ride completed! 100 Reward Points added to your wallet.";
     } else if (status == "rejected") {
-      badgeBg = const Color(0xFFFEE2E2);
-      badgeText = const Color(0xFFDC2626);
+      badgeBg = AppPalette.current.dangerTint;
+      badgeText = AppPalette.current.danger;
       badgeLabel = "✕ Rejected";
       description = "Number could not be verified by ops team.";
     } else if (status == "expired") {
-      badgeBg = const Color(0xFFF1F5F9);
-      badgeText = const Color(0xFF64748B);
+      badgeBg = AppPalette.current.divider;
+      badgeText = AppPalette.current.inkMuted;
       badgeLabel = "⌛ Expired";
       description = "Verification window expired before registration.";
     }
@@ -1106,9 +1107,9 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppPalette.current.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: AppPalette.current.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1134,20 +1135,20 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Gilroy_Bold',
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
+                        color: AppPalette.current.ink,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       phone,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Gilroy_Regular',
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: AppPalette.current.inkMuted,
                       ),
                     ),
                   ],
@@ -1173,7 +1174,7 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          Divider(height: 1, color: AppPalette.current.divider),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1197,10 +1198,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
               if (formattedDate.isNotEmpty)
                 Text(
                   formattedDate,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Gilroy_Regular',
                     fontSize: 11,
-                    color: Color(0xFF94A3B8),
+                    color: AppPalette.current.inkSubtle,
                   ),
                 ),
             ],
@@ -1208,10 +1209,10 @@ class _LeadReferralScreenState extends State<LeadReferralScreen> {
           const SizedBox(height: 6),
           Text(
             description,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Gilroy_Regular',
               fontSize: 11,
-              color: Color(0xFF64748B),
+              color: AppPalette.current.inkMuted,
             ),
           ),
         ],

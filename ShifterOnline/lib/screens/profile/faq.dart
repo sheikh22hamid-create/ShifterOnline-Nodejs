@@ -1,9 +1,10 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:goParcel/theme/widgets/app_top_bar.dart';
+import 'package:goParcel/theme/app_tokens.dart';
 import 'package:accordion/accordion.dart';
 import 'package:accordion/controllers.dart';
 import 'package:get/get.dart';
-import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:provider/provider.dart';
 
 import '../../../Api/Api_wrapper.dart';
@@ -49,14 +50,13 @@ class _FaqState extends State<Faq> {
   @override
   Widget build(BuildContext context) {
     notifier = Provider.of(context, listen: true);
-    return Scaffold(
-      backgroundColor: linercolor,
-      appBar: appbar(tital: "FAQ's".tr),
+    return Scaffold(backgroundColor: AppPalette.current.canvas,
+      appBar: AppTopBar(title: "FAQ's".tr),
       body: Container(
         height: Get.height,
         padding: EdgeInsets.only(top: 1.5),
         decoration: BoxDecoration(
-          color: notifier.lightBgColor,
+          color: AppPalette.current.canvas,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(24),
             topRight: Radius.circular(24),
@@ -73,9 +73,9 @@ class _FaqState extends State<Faq> {
                   contentHorizontalPadding: 10,
                   scaleWhenAnimating: true,
                   openAndCloseAnimation: true,
-                  contentBorderColor: linercolor,
-                  headerBackgroundColor: linercolor,
-                  contentBackgroundColor: notifier.lightBgColor,
+                  contentBorderColor: AppPalette.current.brand,
+                  headerBackgroundColor: AppPalette.current.brand,
+                  contentBackgroundColor: AppPalette.current.canvas,
                   headerPadding: const EdgeInsets.symmetric(
                     vertical: 7,
                     horizontal: 15,
@@ -91,7 +91,7 @@ class _FaqState extends State<Faq> {
                         header: Text(
                           faqList[i]["question"],
                           style: TextStyle(
-                            color: whitecolor,
+                            color: AppPalette.current.onBrand,
                             fontSize: 15,
                             fontFamily: "Gilroy_Bold",
                           ),
@@ -99,7 +99,7 @@ class _FaqState extends State<Faq> {
                         content: Text(
                           faqList[i]["answer"],
                           style:  TextStyle(
-                            color: notifier.text,
+                            color: AppPalette.current.ink,
                             fontSize: 15,
                             fontFamily: "Gilroy_Medium",
                           ),
@@ -113,9 +113,9 @@ class _FaqState extends State<Faq> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: notifier.getBgColor,
+                    color: AppPalette.current.surface,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: notifier.bordecolor.withOpacity(0.6)),
+                    border: Border.all(color: AppPalette.current.line.withOpacity(0.6)),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.03),
@@ -128,11 +128,11 @@ class _FaqState extends State<Faq> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE8F8EE),
+                        decoration: BoxDecoration(
+                          color: AppPalette.current.successTint,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.headset_mic_rounded, color: Color(0xFF00C853), size: 28),
+                        child: Icon(Icons.headset_mic_rounded, color: AppPalette.current.success, size: 28),
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -140,7 +140,7 @@ class _FaqState extends State<Faq> {
                         style: TextStyle(
                           fontFamily: "Gilroy_Bold",
                           fontSize: 16,
-                          color: notifier.text,
+                          color: AppPalette.current.ink,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -150,7 +150,7 @@ class _FaqState extends State<Faq> {
                         style: TextStyle(
                           fontFamily: "Gilroy_Medium",
                           fontSize: 12.5,
-                          color: greaycolor,
+                          color: AppPalette.current.inkMuted,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -162,7 +162,7 @@ class _FaqState extends State<Faq> {
                           style: const TextStyle(fontFamily: "Gilroy_Bold", fontSize: 13.5, color: Colors.white),
                         ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00C853),
+                          backgroundColor: AppPalette.current.success,
                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           elevation: 0,

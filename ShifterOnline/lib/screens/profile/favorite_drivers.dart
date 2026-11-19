@@ -1,3 +1,5 @@
+import 'package:goParcel/theme/widgets/app_top_bar.dart';
+import 'package:goParcel/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:goParcel/Api/Api_wrapper.dart';
@@ -77,30 +79,16 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
     notifier = Provider.of<ColorNotifier>(context, listen: true);
 
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: linercolor,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-          onPressed: () => Get.back(),
-        ),
-        title: Text(
-          "My Favorite Drivers".tr,
-          style: const TextStyle(
-            color: Colors.white,
-            fontFamily: "Gilroy_Bold",
-          ),
-        ),
-      ),
+      backgroundColor: AppPalette.current.canvas,
+      appBar: AppTopBar(title: "My Favorite Drivers".tr),
       body: _isLoading
           ? Center(
-              child: CircularProgressIndicator(color: linercolor),
+              child: CircularProgressIndicator(color: AppPalette.current.brand),
             )
           : _drivers.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
-                  color: linercolor,
+                  color: AppPalette.current.brand,
                   onRefresh: _fetchFavoriteDrivers,
                   child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(
@@ -125,7 +113,7 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
           Icon(
             Icons.favorite_border_rounded,
             size: 80,
-            color: linercolor.withOpacity(0.4),
+            color: AppPalette.current.brand.withOpacity(0.4),
           ),
           const SizedBox(height: 16),
           Text(
@@ -133,7 +121,7 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
             style: TextStyle(
               fontFamily: "Gilroy_Bold",
               fontSize: 18,
-              color: notifier.text,
+              color: AppPalette.current.ink,
             ),
           ),
           const SizedBox(height: 8),
@@ -143,7 +131,7 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
             style: TextStyle(
               fontFamily: "Gilroy_Medium",
               fontSize: 14,
-              color: notifier.text.withOpacity(0.5),
+              color: AppPalette.current.ink.withOpacity(0.5),
             ),
           ),
         ],
@@ -164,7 +152,7 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: notifier.getBgColor,
+        color: AppPalette.current.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -182,13 +170,13 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
             width: 55,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: linercolor,
+              color: AppPalette.current.brand,
             ),
             child: Center(
               child: Text(
                 initials,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppPalette.current.onBrand,
                   fontFamily: "Gilroy_Bold",
                   fontSize: 18,
                 ),
@@ -207,21 +195,21 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
                   style: TextStyle(
                     fontFamily: "Gilroy_Bold",
                     fontSize: 15,
-                    color: notifier.text,
+                    color: AppPalette.current.ink,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
                     Icon(Icons.phone_outlined,
-                        size: 14, color: notifier.text.withOpacity(0.6)),
+                        size: 14, color: AppPalette.current.ink.withOpacity(0.6)),
                     const SizedBox(width: 4),
                     Text(
                       mobile,
                       style: TextStyle(
                         fontFamily: "Gilroy_Medium",
                         fontSize: 13,
-                        color: notifier.text.withOpacity(0.6),
+                        color: AppPalette.current.ink.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -230,14 +218,14 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
                 Row(
                   children: [
                     Icon(Icons.two_wheeler_outlined,
-                        size: 14, color: notifier.text.withOpacity(0.6)),
+                        size: 14, color: AppPalette.current.ink.withOpacity(0.6)),
                     const SizedBox(width: 4),
                     Text(
                       vehicle,
                       style: TextStyle(
                         fontFamily: "Gilroy_Medium",
                         fontSize: 13,
-                        color: notifier.text.withOpacity(0.6),
+                        color: AppPalette.current.ink.withOpacity(0.6),
                       ),
                     ),
                   ],
@@ -253,12 +241,12 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
             child: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.redAccent.withOpacity(0.1),
+                color: AppPalette.current.danger.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.favorite_rounded,
-                color: Colors.redAccent,
+                color: AppPalette.current.danger,
                 size: 22,
               ),
             ),
@@ -276,23 +264,23 @@ class _FavoriteDriversScreenState extends State<FavoriteDriversScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: notifier.getBgColor,
+        backgroundColor: AppPalette.current.surface,
         title: Text(
           "Remove Favorite Driver".tr,
-          style: TextStyle(fontFamily: "Gilroy_Bold", color: notifier.text),
+          style: TextStyle(fontFamily: "Gilroy_Bold", color: AppPalette.current.ink),
         ),
         content: Text(
           "Are you sure you want to remove ${driver["name"] ?? "this driver"} from your favorites?".tr,
-          style: TextStyle(fontFamily: "Gilroy_Medium", color: notifier.text.withOpacity(0.8)),
+          style: TextStyle(fontFamily: "Gilroy_Medium", color: AppPalette.current.ink.withOpacity(0.8)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text("Cancel".tr, style: TextStyle(color: greaycolor, fontFamily: "Gilroy_Medium")),
+            child: Text("Cancel".tr, style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: "Gilroy_Medium")),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
+              backgroundColor: AppPalette.current.danger,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => Navigator.pop(ctx, true),

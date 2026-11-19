@@ -1,3 +1,5 @@
+import 'package:goParcel/theme/widgets/app_top_bar.dart';
+import 'package:goParcel/theme/app_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -30,25 +32,20 @@ class VehicleDetailsScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      backgroundColor: notifier.lightBgColor,
-      appBar: AppBar(
-        backgroundColor: notifier.lightBgColor,
-        elevation: 0,
-        iconTheme: IconThemeData(color: notifier.text),
-        title: Text(catName, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Bold', fontSize: 18)),
-      ),
+      backgroundColor: AppPalette.current.canvas,
+      appBar: AppTopBar(title: catName),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
         children: [
           if (detailImage.isNotEmpty)
             Container(
               height: 180,
-              decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(color: AppPalette.current.surface, borderRadius: BorderRadius.circular(16)),
               child: FadeInImage.assetNetwork(
                 placeholder: 'assets/loading.gif',
                 image: Config.resolveImageUrl(detailImage),
                 fit: BoxFit.contain,
-                imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: greaycolor, size: 56),
+                imageErrorBuilder: (_, __, ___) => Icon(Icons.local_shipping_outlined, color: AppPalette.current.inkMuted, size: 56),
               ),
             ),
           const SizedBox(height: 18),
@@ -79,11 +76,11 @@ class VehicleDetailsScreen extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(border: Border.all(color: notifier.bordecolor), borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(border: Border.all(color: AppPalette.current.line), borderRadius: BorderRadius.circular(14)),
               child: Column(children: [
-                Text('$maxLoad KG', style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 26)),
+                Text('$maxLoad KG', style: TextStyle(color: AppPalette.current.brandText, fontFamily: 'Gilroy_Bold', fontSize: 26)),
                 const SizedBox(height: 2),
-                Text('MAX LOAD CAPACITY', style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Bold', fontSize: 11, letterSpacing: 0.5)),
+                Text('MAX LOAD CAPACITY', style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: 'Gilroy_Bold', fontSize: 11, letterSpacing: 0.5)),
               ]),
             ),
           const SizedBox(height: 18),
@@ -99,15 +96,15 @@ class VehicleDetailsScreen extends StatelessWidget {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: notifier.getBgColor, borderRadius: BorderRadius.circular(14)),
+              decoration: BoxDecoration(color: AppPalette.current.surface, borderRadius: BorderRadius.circular(14)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 for (var i = 0; i < allNotes.length; i++)
                   Padding(
                     padding: EdgeInsets.only(bottom: i == allNotes.length - 1 ? 0 : 12),
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      CircleAvatar(radius: 11, backgroundColor: linercolor, child: Text('${i + 1}', style: TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'Gilroy_Bold'))),
+                      CircleAvatar(radius: 11, backgroundColor: AppPalette.current.brand, child: Text('${i + 1}', style: TextStyle(color: AppPalette.current.onBrand, fontSize: 11, fontFamily: 'Gilroy_Bold'))),
                       const SizedBox(width: 10),
-                      Expanded(child: Text(allNotes[i], style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 13, height: 1.35))),
+                      Expanded(child: Text(allNotes[i], style: TextStyle(color: AppPalette.current.ink, fontFamily: 'Gilroy_Medium', fontSize: 13, height: 1.35))),
                     ]),
                   ),
               ]),
@@ -118,13 +115,13 @@ class VehicleDetailsScreen extends StatelessWidget {
   }
 
   Widget _dimensionStat(String label, String value) => Column(children: [
-        Text(value, style: TextStyle(color: linercolor, fontFamily: 'Gilroy_Bold', fontSize: 18)),
-        Text(label, style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+        Text(value, style: TextStyle(color: AppPalette.current.brandText, fontFamily: 'Gilroy_Bold', fontSize: 18)),
+        Text(label, style: TextStyle(color: AppPalette.current.inkMuted, fontFamily: 'Gilroy_Medium', fontSize: 11)),
       ]);
 
   Widget _badge(IconData icon, String label) => Column(children: [
-        CircleAvatar(radius: 20, backgroundColor: linercolor, child: Icon(icon, color: Colors.white, size: 18)),
+        CircleAvatar(radius: 20, backgroundColor: AppPalette.current.brand, child: Icon(icon, color: AppPalette.current.onBrand, size: 18)),
         const SizedBox(height: 6),
-        Text(label, textAlign: TextAlign.center, style: TextStyle(color: notifier.text, fontFamily: 'Gilroy_Medium', fontSize: 11)),
+        Text(label, textAlign: TextAlign.center, style: TextStyle(color: AppPalette.current.ink, fontFamily: 'Gilroy_Medium', fontSize: 11)),
       ]);
 }
