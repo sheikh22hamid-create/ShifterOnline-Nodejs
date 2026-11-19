@@ -7463,7 +7463,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
                       debugPrint("--------- name --------- ${getdata.read("UserLogin")["name"]}");
                       Get.back();
                       razorPayClass.openCheckout(
-                        key: "rzp_live_SUiompzvYRhrsg", // Live Razorpay key ID
+                        key: Config.razorpayKeyId,
                         amount: "$grandTotal",
                         number: "${getdata.read("UserLogin")["mobile"]}",
                         name: "${getdata.read("UserLogin")["name"]}",
@@ -8966,7 +8966,7 @@ class _TrackingWayState extends State<TrackingWay> with TickerProviderStateMixin
             return;
           }
 
-          String razorpayKey = "rzp_live_SUiompzvYRhrsg";
+          String razorpayKey = Config.razorpayKeyId;
           int amountInPaise = (amount * 100).toInt();
 
           debugPrint("======== Amount in Paise ======== $amountInPaise");

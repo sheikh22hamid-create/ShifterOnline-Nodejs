@@ -12,6 +12,10 @@ class Config {
   static const String imageURLPath = nodeImageURLPath;
   static const String baseurl = '${imageURLPath}cust_api/';
 
+  // Razorpay key ID (public; the secret lives only on the server). Must match the server's
+  // RAZORPAY_KEY_ID: test key for DEV, live key for production.
+  static const String razorpayKeyId = 'rzp_test_Rr8n8p41taq6fM';
+
   /// Checks whether a given string is a valid, non-empty image path or URL.
   /// Prevents 404 network errors caused by empty paths or naked base URLs.
   static bool isValidImageUrl(String? value) {
