@@ -3,6 +3,7 @@ const router = express.Router();
 const whatsappClient = require("../whatsapp/client");
 const notifications = require("../whatsapp/notifications");
 const customerHandler = require("../whatsapp/handlers/customerHandler");
+const trialDriverCloudFlow = require("../whatsapp/trialDriverCloudFlow");
 const { WHATSAPP_TEMPLATES } = require("../whatsapp/templates");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
@@ -395,7 +396,14 @@ router.post("/webhook", (req, res) => {
   try {
     const body = req.body;
     logger.info(`WhatsApp Cloud webhook received: ${JSON.stringify(body)}`);
-    return res.status(200).send("EVENT_RECEIVED");
+
+    // Acknowledge Meta immediately with 200 OK to prevent retries
+    res.status(200).send("EVENT_RECEIVED");
+
+    // Process trial driver flow asynchronously
+    trialDriverCloudFlow.handleIncomingMessage(body).catch((err) => {
+      logger.error("Error handling WhatsApp incoming message in trial flow:", err);
+    });
   } catch (err) {
     logger.error("Error processing WhatsApp webhook payload:", err);
     return res.sendStatus(500);
