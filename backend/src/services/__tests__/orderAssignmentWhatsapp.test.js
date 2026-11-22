@@ -83,6 +83,18 @@ describe("assignRiderToOrder channel", () => {
     expect(await assignRiderToOrder(base({ channel: "whatsapp" }))).toEqual({ ok: false, status: 500, message: "Could not check WhatsApp eligibility" });
   });
 
+  it("reprices assignment off the order's Porter anchor", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 55, status: 1, a_status: 1 });
+    await assignRiderToOrder(base({ order: { ...ORDER, porter_quote: { fare: 300 } } }));
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(5, 4, 1, 0, 3, null, null, { fare: 300 });
+  });
+
+  it("a corrupt porter_quote keeps the unanchored assignment pricing call", async () => {
+    prisma.tbl_rider.findUnique.mockResolvedValue({ id: 55, status: 1, a_status: 1 });
+    await assignRiderToOrder(base({ order: { ...ORDER, porter_quote: "{bad" } }));
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(5, 4, 1, 0, 3);
+  });
+
   it("rejects an unknown channel", async () => {
     expect(await assignRiderToOrder(base({ channel: "sms" }))).toEqual({ ok: false, status: 400, message: "Invalid channel" });
   });

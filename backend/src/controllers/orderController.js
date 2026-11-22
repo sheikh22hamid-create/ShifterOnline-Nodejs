@@ -466,6 +466,7 @@ async function createOrderCore({
         modelMultipliers: slabPricingConfig?.modelMultipliers,
         extraMileCharge: orderExtraMileCharge,
         coveredBodyCharge: bodyTypeCharge,
+        discount: planDiscount,
       }).catch(() => null)
     : null;
   const { fare, driverEarning, commission } = (firstVehicleSlabConfig || slabPricingConfig?.modelMultipliers)

@@ -152,6 +152,26 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(dispatchManager.recordModel1Outcome).toHaveBeenCalledWith(1, 6, "accept");
   });
 
+  it("reprices off the order's Porter anchor at accept (anchor appended to priceForPackageId)", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12, porter_quote: { fare: 300 } });
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 12, 9, null, null, { fare: 300 });
+  });
+
+  it("a corrupt porter_quote reprices exactly as before (no anchor argument)", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12, porter_quote: "{bad" });
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+
+    await tripLifecycle.acceptOrder(297, 1);
+
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 12, 9);
+  });
+
   it("does not record a Model 1 outcome when the accept fails (offer expired or order already taken)", async () => {
     prisma.$executeRaw.mockResolvedValueOnce(0);
     prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, status: "sent" });

@@ -2,6 +2,7 @@ const { Prisma } = require("@prisma/client");
 const prisma = require("../config/db");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const { anchorOf } = require("./orderPorterAnchor");
 const pushNotifier = require("./pushNotifier");
 const adminSocket = require("../sockets/adminSocket");
 const logger = require("../utils/logger");
@@ -675,6 +676,8 @@ async function runBatchInner(orderId) {
 
   const distanceKm = Number(currentOrder.distance) || 0;
   const extraMileCharge = Number(currentOrder.extra_mile_charge) || 0;
+  // Porter-anchored orders keep every repricing (placeholder, per-driver popup) on the stored quote.
+  const porterAnchor = anchorOf(currentOrder);
   let pkg, discount, packageTitle, vehicleSlabConfig, modelMultipliers;
   if (precomputed && precomputed.pkg) {
     // orderController.createOrderCore already had the package row/discount in
@@ -714,7 +717,8 @@ async function runBatchInner(orderId) {
       extraMileCharge,
       discount,
       vehicleSlabConfig,
-      modelMultipliers
+      modelMultipliers,
+      ...(porterAnchor ? [0, new Date(), porterAnchor] : [])
     );
     // Asynchronous update so we don't block driver dispatch by 400-800ms of remote DB latency
     prisma.pkg_order.update({
@@ -916,7 +920,8 @@ async function runBatchInner(orderId) {
             extraMileCharge,
             discount,
             vehicleSlabConfig,
-            modelMultipliers
+            modelMultipliers,
+            ...(porterAnchor ? [0, new Date(), porterAnchor] : [])
           );
           const payload = buildOrderRequestPayload(
             currentOrder, packageId, distanceKm.toFixed(1), fare, packageTitle,
@@ -1262,6 +1267,20 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount, opts = {}
   // driver's popup stays on screen; see the popup_duration override below.
   const expiresAt = armedAt + ttlMs;
 
+  // Porter-anchored order: price off the stored quote with the real model offsets (loaded once per batch).
+  const porterAnchor = anchorOf(order);
+  let anchorPricing = null;
+  if (porterAnchor) {
+    const slabPricingConfig = await pricingEngine.getSlabPricingConfig();
+    anchorPricing = {
+      slabConfig: await pricingEngine.resolveVehicleSlabConfig(
+        slabPricingConfig?.slabRates,
+        pkg?.cat_id || pkg?.category || pkg?.category_id
+      ),
+      modelMultipliers: slabPricingConfig?.modelMultipliers || null,
+    };
+  }
+
   const offeredRiderIds = [];
   await Promise.all(
     riders.filter((driver) => !lockManager.isLocked(Number(driver.id))).map(async (driver) => {
@@ -1283,7 +1302,8 @@ async function offerToInterestedRiders(order, riderIds, pkg, discount, opts = {}
       const { fare, driverTitle } = pricingEngine.priceForPackage(
         pkg, distanceKm,
         Number.isFinite(driverDistanceKm) && driverDistanceKm > 0 ? driverDistanceKm : 1,
-        0, discount
+        0, discount,
+        ...(anchorPricing ? [anchorPricing.slabConfig, anchorPricing.modelMultipliers, 0, new Date(), porterAnchor] : [])
       );
 
       const shownFare = fareScale === 1 ? fare : Math.round(fare * fareScale * 100) / 100;

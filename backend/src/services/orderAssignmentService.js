@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const dispatchManager = require("./dispatchManager");
 const pricingEngine = require("./pricingEngine");
+const { anchorOf } = require("./orderPorterAnchor");
 const adminSocket = require("../sockets/adminSocket");
 const { getIO } = require("../sockets/socketServer");
 const bookingGuarantee = require("./bookingGuaranteeService");
@@ -106,12 +107,15 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
   // popup and pkg_order.driver_earning set at self-accept (see
   // tripLifecycle.acceptOrder) — the driver sees one consistent number
   // throughout, not a commission-deducted figure only here.
+  const porterAnchor = anchorOf(order);
   const { pkg, fare, commission } = await pricingEngine.priceForPackageId(
     order.delivery_type,
     Number(order.distance) || 0,
     Number(order.radius_range) || 1,
     Number(order.extra_mile_charge) || 0,
-    order.uid
+    order.uid,
+    // Orders anchored on a live Porter quote stay on it (slab config/multipliers load inside).
+    ...(porterAnchor ? [null, null, porterAnchor] : [])
   );
   await prisma.pkg_order.update({ where: { id: orderId }, data: { driver_earning: fare, commission } });
 

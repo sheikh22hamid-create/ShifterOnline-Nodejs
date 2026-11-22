@@ -641,10 +641,10 @@ async function porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig = n
 }
 
 /** Fetch + guard in one call (used by order creation). Resolves to the anchor or null. */
-async function resolvePorterAnchor({ cityId = null, catId, plat, plong, dlat, dlong, stops = [], pkg, distanceKm, slabConfig = null, modelMultipliers = null, extraMileCharge = 0, coveredBodyCharge = 0 }) {
+async function resolvePorterAnchor({ cityId = null, catId, plat, plong, dlat, dlong, stops = [], pkg, distanceKm, slabConfig = null, modelMultipliers = null, extraMileCharge = 0, coveredBodyCharge = 0, discount = null }) {
   const anchor = await fetchPorterAnchor({ cityId, catId, plat, plong, dlat, dlong, stops });
   if (!anchor) return null;
-  const ok = await porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig, modelMultipliers, extraMileCharge, coveredBodyCharge });
+  const ok = await porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig, modelMultipliers, extraMileCharge, coveredBodyCharge, discount });
   return ok ? anchor : null;
 }
 

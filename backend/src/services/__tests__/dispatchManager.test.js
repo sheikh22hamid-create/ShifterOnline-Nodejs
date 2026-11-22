@@ -22,6 +22,7 @@ jest.mock("../pricingEngine", () => {
     // calculateRadiusCharge) against realistic per-driver distances.
     getPackageById: jest.fn().mockResolvedValue({ id: 6, title: "Model 1", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 }),
     getActivePlanDiscount: jest.fn().mockResolvedValue(null),
+    getSlabPricingConfig: jest.fn(actual.getSlabPricingConfig),
   };
 });
 
@@ -1210,6 +1211,52 @@ describe("dispatchManager overlapping batch cascade", () => {
     // Rider 2 @ 5km: chargeable 4km * pickup_per_km_charge(10) = 40 -> 137.
     expect(far.trip_total).toBe("137");
     expect(far.trip_total).not.toBe(nearby.trip_total);
+  });
+
+  describe("Porter anchor on the order", () => {
+    const pricingEngine = require("../pricingEngine");
+    const MULTIPLIERS = { models: [{ model: "Model 3", offset_percent: 8 }, { model: "Model 4", offset_percent: 20 }] };
+    const m3 = { id: 9, title: "Model 3", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 };
+    const m4 = { id: 10, title: "Model 4", min_charge: 20, per_km_charge: 5, pickup_per_km_charge: 10 };
+
+    beforeEach(() => {
+      pricingEngine.getSlabPricingConfig.mockImplementation(async () => ({ slabRates: null, modelMultipliers: MULTIPLIERS }));
+    });
+    afterEach(() => {
+      pricingEngine.getSlabPricingConfig.mockImplementation(jest.requireActual("../pricingEngine").getSlabPricingConfig);
+    });
+
+    const popupFare = async (pkg, porter_quote) => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([makeRiderRow(1, { distanceKm: 1 })])
+        .mockResolvedValueOnce([])
+        .mockResolvedValue([]);
+      const pricing = { fare: 20, driverEarning: 20, commission: 0, pkg, discount: null };
+      await dispatchManager.startDispatch({ ...order, porter_quote }, pricing);
+      await flush();
+      return emitted.find((e) => e.event === "order:request").payload.trip_total;
+    };
+
+    it("prices the Model 3 popup at the Porter fare", async () => {
+      expect(await popupFare(m3, { fare: 300 })).toBe("300");
+    });
+
+    it("prices a Model 4 popup off the anchor with the real model offsets", async () => {
+      expect(await popupFare(m4, { fare: 300 })).toBe(String(Math.round((300 * 1.2) / 1.08)));
+    });
+
+    it("a corrupt porter_quote falls back to the rate card without crashing", async () => {
+      // 20 + 5*15.4 = 97
+      expect(await popupFare(m3, "{bad")).toBe("97");
+    });
+
+    it("offerToInterestedRiders prices off the anchor too", async () => {
+      mockRidersById({ 7: { id: 7, rlats: "28.70", rlongs: "77.10", fcm_token: "tok7", a_status: 1, vehicle: order.category } });
+      await dispatchManager.offerToInterestedRiders({ ...order, porter_quote: { fare: 300 } }, [7], m4, null);
+      const p = emitted.find((e) => e.event === "order:request").payload;
+      expect(p.trip_total).toBe(String(Math.round((300 * 1.2) / 1.08)));
+    });
   });
 
   describe("tier cursor race regression (order #1481)", () => {

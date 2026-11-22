@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const dispatchManager = require("./dispatchManager");
 const lockManager = require("./lockManager");
 const pricingEngine = require("./pricingEngine");
+const { anchorOf } = require("./orderPorterAnchor");
 const driverPlanService = require("./driverPlanService");
 const dailyDriverEnrollmentQuery = require("./dailyDriverCommissionExemption");
 const nextDayRules = require("./nextDayRules");
@@ -264,12 +265,15 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
     ? haversineKm(driverLat, driverLng, pickupLat, pickupLng)
     : 1; // unknown location -> same "zero radius charge" default used everywhere else
 
+  const porterAnchor = anchorOf(order);
   const { pkg, fare, commission, radiusCharge } = await pricingEngine.priceForPackageId(
     acceptedPackageId,
     Number(order.distance) || 0,
     driverToPickupKm,
     Number(order.extra_mile_charge) || 0,
-    order.uid
+    order.uid,
+    // Orders anchored on a live Porter quote stay on it (slab config/multipliers load inside).
+    ...(porterAnchor ? [null, null, porterAnchor] : [])
   );
 
   // driver_earning stores the full gross fare (same number the popup and
