@@ -15,11 +15,11 @@ Model 3 base, and derive the other models from it. Our existing rate card stays 
 ## Goals
 
 - Instant fare estimate in **Indore** shows Model 3 = Porter's live web-quote fare for the same vehicle + route.
-- Model 1/2/4/5 = Porter fare × admin-set % per model (Model 3 fixed at 0%).
+- Model 1/2/4/5 derived from Porter's fare with the **existing rate-card model offsets** (owner decision 2026-11-22: no separate % for Porter mode).
 - Any Porter failure (token expired, block/422, timeout, bad data) → silently use today's rate-card pricing.
 - The order's money paths (create, dispatch model upgrades, accept, assignment, edits, early drop) stay
   consistent with the Porter-based fare the customer was shown.
-- Admin can switch it on/off, choose cities, and set the per-model %.
+- Admin can switch it on/off and choose cities.
 
 ## Non-goals
 
@@ -93,19 +93,20 @@ Body: `{ pickup:{lat,lng}, drop:{lat,lng}, stops:[{lat,lng}] }`. Response:
 ### 3. Settings (app_settings JSON key `porter_live_pricing`, no migration)
 
 ```json
-{ "enabled": false, "city_ids": [<Indore id>], "timeout_ms": 3000, "cache_minutes": 10,
-  "model_percent": { "Model 1": -10, "Model 2": -5, "Model 3": 0, "Model 4": 10, "Model 5": 25 } }
+{ "enabled": false, "city_ids": [<Indore id>], "timeout_ms": 3000, "cache_minutes": 10 }
 ```
 
-Defaults are placeholders. The owner sets the real % in admin. Model matched by package title like today's
-`modelMultipliers` (`pkgTitle.includes(model)`). Model 3 is always 0, whatever is stored.
-Admin UI: a "Porter Live Pricing" section on the Rate Cards page with the on/off switch, cities, per-model %,
+Admin UI: a "Porter Live Pricing" section on the Rate Cards page with the on/off switch, cities,
 a health line (last success / last error / failures) and a "Test quote" box (two points → per-vehicle Porter
 fare + our 5 model fares). Default **OFF**.
 
 ### 4. Fare formula in Porter mode
 
-For a package of model X: `base = porterFare × (1 + model_percent[X]/100)`.
+Uses the existing `pricing_model_multipliers` offsets (the ones in the Distance Slabs modal), relative to Model 3
+so Model 3 always equals Porter: `base = porterFare × (1 + offset[X]/100) / (1 + offset[Model 3]/100)`.
+Model matched by package title like today (`pkgTitle.includes(model)`); no match → factor 1.
+With today's offsets −10/0/+8/+20/+40 this gives M1 ≈ 83.3%, M2 ≈ 92.6%, M3 = 100%, M4 ≈ 111.1%, M5 ≈ 129.6% of
+Porter — the same gaps between models the rate card has today. Changing offsets in the modal changes both modes.
 This **replaces** the slab/linear base **and** our night charge / time-band charge, because Porter's fare already
 includes its night add-on. Everything else is added exactly as today: plan discount on the base (same cap rules),
 per-driver radius charge, extra-mile charge, body-type charge, extra-stop charge. Rounding, driver earning and
@@ -139,8 +140,7 @@ to the customer's city. Order creation uses the order's resolved city (the same 
 
 ## Decisions made by Claude (owner please check)
 
-1. Separate per-model % for Porter mode instead of reusing the slab offsets (those are relative to an anchor with a
-   10% markup and would make Model 1 ≈ 17% below Porter, not what the admin types).
+1. (Owner) Reuse the rate-card model offsets, taken relative to Model 3 so Model 3 = Porter.
 2. Porter fare replaces our night / time-band charge (it already includes Porter's).
 3. Orders with stops use the rate card at estimate time until Porter's stop format is verified.
 4. Scheduled / next-day bookings use the live quote from estimate time (no future-time prediction).
