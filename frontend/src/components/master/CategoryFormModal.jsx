@@ -13,7 +13,7 @@ const BODY_TYPES = [
 
 const EMPTY_FORM = {
   cat_name: '', cat_img: '', city_id: '', sort_order: '0', cat_status: 1,
-  max_load_kg: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '', max_extra_stops: '', extra_stop_charge: '',
+  max_load_kg: '', max_distance: '', dim_length: '', dim_width: '', dim_height: '', dim_unit: 'ft', detail_image: '', max_extra_stops: '', extra_stop_charge: '',
   allowed_body_types: 'open,half,covered',
   driver_body_types: 'open,half,covered',
 }
@@ -43,7 +43,7 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
       setForm({
         cat_name: category.cat_name, cat_img: category.cat_img, city_id: category.city_id ?? '',
         sort_order: String(category.sort_order ?? 0), cat_status: category.cat_status,
-        max_load_kg: category.max_load_kg ?? '', dim_length: category.dim_length ?? '',
+        max_load_kg: category.max_load_kg ?? '', max_distance: category.max_distance ?? '', dim_length: category.dim_length ?? '',
         dim_width: category.dim_width ?? '', dim_height: category.dim_height ?? '',
         dim_unit: category.dim_unit || 'ft', detail_image: category.detail_image ?? '',
         max_extra_stops: category.max_extra_stops ?? '', extra_stop_charge: category.extra_stop_charge ?? '',
@@ -160,6 +160,28 @@ export default function CategoryFormModal({ open, category, onClose, onSaved }) 
           />
           <span className="text-[13px]" style={{ color: 'var(--ink-muted)' }}>kg</span>
         </div>
+      </div>
+
+      <div className="mb-3">
+        <label className="mb-1.5 block text-[12px] font-medium" style={{ color: 'var(--ink)' }}>
+          Maximum Travel Distance <span className="text-[11px] font-normal" style={{ color: 'var(--ink-muted)' }}>(KM) — Customer App Filtering Limit</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={form.max_distance}
+            onChange={(e) => setForm((f) => ({ ...f, max_distance: e.target.value }))}
+            className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+            style={FIELD_STYLE}
+            placeholder="e.g. 70 (Bike), 100 (E-Loader), 200 (3-Wheeler), 500 (4-Wheeler)"
+          />
+          <span className="text-[13px] font-semibold" style={{ color: 'var(--ink-muted)' }}>KM</span>
+        </div>
+        <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+          Customer trip distance isse adhik hone par customer app me ye gadi show nahi hogi.
+        </p>
       </div>
 
       <div className="mb-3">

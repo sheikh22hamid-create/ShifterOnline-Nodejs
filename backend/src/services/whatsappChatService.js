@@ -1,6 +1,7 @@
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const cloudApi = require("../whatsapp/cloudApiClient");
+const { WHATSAPP_TEMPLATES } = require("../whatsapp/templates");
 
 let tablesEnsured = false;
 
@@ -579,28 +580,50 @@ async function sendAdminMessage({
   if (isTemplate) {
     if (!templateName) throw new Error("Template name is required for template messages");
 
-    // Map legacy local template names to Meta approved template names
-    let metaTemplateName = templateName;
-    const lowerName = String(templateName).toLowerCase();
-    if (lowerName === "hello_world") {
-      metaTemplateName = "hello_world";
-    } else if (lowerName.includes("driver")) {
-      metaTemplateName = "shifter_driver_onboard";
-    } else if (lowerName.includes("sales") || lowerName.includes("booking") || lowerName.includes("payment")) {
-      metaTemplateName = "shifter_booking_followup";
-    } else {
-      metaTemplateName = "shifter_customer_welcome";
+    // Map template to Meta approved template name
+    const foundTpl = WHATSAPP_TEMPLATES.find((t) => t.id === templateName || t.name === templateName || t.metaTemplateName === templateName);
+    let metaTemplateName = foundTpl?.metaTemplateName;
+
+    if (!metaTemplateName) {
+      const lowerName = String(templateName).toLowerCase();
+      if (lowerName === "hello_world") {
+        metaTemplateName = "hello_world";
+      } else if (lowerName.includes("driver")) {
+        metaTemplateName = "shifter_driver_onboard";
+      } else if (lowerName.includes("sales") || lowerName.includes("booking") || lowerName.includes("payment")) {
+        metaTemplateName = "shifter_booking_followup";
+      } else {
+        metaTemplateName = "shifter_customer_welcome";
+      }
     }
 
     messageType = "template";
-    storedBody = text || `[Template: ${metaTemplateName}]`;
+    storedBody = text || foundTpl?.message || `[Template: ${metaTemplateName}]`;
 
-    metaResponse = await cloudApi.sendTemplateMessage(
-      normalized,
-      metaTemplateName,
-      templateLanguage,
-      components
-    );
+    try {
+      metaResponse = await cloudApi.sendTemplateMessage(
+        normalized,
+        metaTemplateName,
+        templateLanguage || "en_US",
+        components
+      );
+    } catch (tplErr) {
+      // If error is #132001 (translation/language code mismatch), retry with "en"
+      if (tplErr.details?.code === 132001 && (templateLanguage || "en_US") === "en_US") {
+        try {
+          metaResponse = await cloudApi.sendTemplateMessage(
+            normalized,
+            metaTemplateName,
+            "en",
+            components
+          );
+        } catch (_retryErr) {
+          throw tplErr;
+        }
+      } else {
+        throw tplErr;
+      }
+    }
   } else if (mediaUrl) {
     messageType = mediaType?.startsWith("video") ? "video" : "image";
     metaResponse = await cloudApi.sendMediaMessage(normalized, messageType, mediaUrl, text);

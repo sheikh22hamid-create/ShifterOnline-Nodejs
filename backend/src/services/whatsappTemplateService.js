@@ -28,6 +28,9 @@ async function getAllTemplates() {
 
     return {
       id: tpl.id,
+      name: tpl.id,
+      metaTemplateName: tpl.metaTemplateName || tpl.id,
+      isMetaApproved: Boolean(tpl.isMetaApproved),
       title: tpl.title,
       category: tpl.category,
       categoryLabel: tpl.categoryLabel,

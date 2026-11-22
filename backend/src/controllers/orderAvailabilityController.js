@@ -2,6 +2,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { resolvePickupArea } = require("../services/pickupCityService");
 const { calculateRadiusCharge } = require("../services/pricingEngine");
+const { getRoadDistanceKm } = require("../utils/geoDistance");
 const orderSearchSettings = require("../services/orderSearchSettings");
 const { isInstantBookingType } = require("../services/orderSearchRules");
 const { SEARCH_RADIUS_KM, RIDER_LOCATION_FRESHNESS_MS, RADIUS_SUGGESTION_MAX_KM } = require("../config/constants");
@@ -120,6 +121,29 @@ async function availableVehicles(req, res) {
     const b = req.body || {};
     const pickupLat = Number(b.pickup_lat);
     const pickupLng = Number(b.pickup_lng);
+    const dropLat = Number(b.drop_lat);
+    const dropLng = Number(b.drop_lng);
+    let tripDistanceKm = Number(b.distance_km || 0);
+
+    if (
+      (!tripDistanceKm || tripDistanceKm <= 0) &&
+      isFiniteNumber(dropLat) &&
+      isFiniteNumber(dropLng) &&
+      dropLat >= -90 &&
+      dropLat <= 90 &&
+      dropLng >= -180 &&
+      dropLng <= 180
+    ) {
+      try {
+        const roadDist = await getRoadDistanceKm(pickupLat, pickupLng, dropLat, dropLng);
+        if (roadDist && roadDist.distanceKm) {
+          tripDistanceKm = Number(roadDist.distanceKm);
+        }
+      } catch (_e) {
+        // Fallback or ignore if external road distance fails
+      }
+    }
+
     const bookingType = String(b.booking_type || "now").toLowerCase();
     const scheduledAt = b.scheduled_at;
     const categoryReq = String(b.category || "").trim();
@@ -235,6 +259,17 @@ async function availableVehicles(req, res) {
       const category = categoryById[pkg.cat_id];
       if (!category) continue;
       if (filterByCategory && !category.cat_name?.toLowerCase().includes(categoryReqLower)) continue;
+
+      // Distance limit eligibility filter:
+      // If trip distance is known and category has a configured max_distance limit:
+      // Trip distance <= max_distance -> eligible. Trip distance > max_distance -> exclude.
+      if (tripDistanceKm > 0 && category.max_distance !== null && category.max_distance !== undefined) {
+        const maxDist = Number(category.max_distance);
+        if (maxDist > 0 && tripDistanceKm > maxDist) {
+          continue; // Ineligible for this trip distance
+        }
+      }
+
       const catName = category.cat_name;
       const catImg = pkg.user_detail_image || category.cat_img || "images/package/model-1.png";
 
@@ -305,6 +340,8 @@ async function availableVehicles(req, res) {
         price: startingFare,
         currency,
         max_weight_kg: specs.max_weight_kg,
+        max_distance: category.max_distance ? Number(category.max_distance) : null,
+        max_distance_km: category.max_distance ? Number(category.max_distance) : null,
         max_dimensions: specs.max_dimensions,
         detail_image: specs.detail_image,
         reason_unavailable: reasonUnavailable,
@@ -325,6 +362,8 @@ async function availableVehicles(req, res) {
           cat_img: v.cat_img,
           image: v.image,
           max_load_kg: v.max_weight_kg,
+          max_distance: v.max_distance,
+          max_distance_km: v.max_distance_km,
           max_dimensions: v.max_dimensions,
           detail_image: v.detail_image,
           allowed_body_types: v.allowed_body_types,

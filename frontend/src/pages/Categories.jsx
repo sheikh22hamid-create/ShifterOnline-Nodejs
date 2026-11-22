@@ -75,7 +75,7 @@ export default function Categories() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
-                {['', 'Category', 'Body Types', 'City', 'Sort', 'Status', canManage ? '' : undefined].filter((h) => h !== undefined).map((h, i) => (
+                {['', 'Category', 'Body Types', 'Max Distance', 'City', 'Sort', 'Status', canManage ? '' : undefined].filter((h) => h !== undefined).map((h, i) => (
                   <th key={h || i} className="whitespace-nowrap px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink-faint)' }}>
                     {h}
                   </th>
@@ -86,14 +86,14 @@ export default function Categories() {
               {loading &&
                 Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td colSpan={7} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <div className="h-4 animate-pulse rounded" style={{ background: 'var(--border)' }} />
                     </td>
                   </tr>
                 ))}
               {!loading && error && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
+                  <td colSpan={8} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--danger)' }}>
                     {error}
                   </td>
                 </tr>
@@ -164,6 +164,17 @@ export default function Categories() {
                           </div>
                         );
                       })()}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2.5">
+                      {c.max_distance ? (
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          {Number(c.max_distance)} KM
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                          ⚠️ Not Configured
+                        </span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
                       {c.city_id ? `#${c.city_id}` : 'All cities'}

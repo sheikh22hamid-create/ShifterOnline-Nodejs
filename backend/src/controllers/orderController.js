@@ -403,6 +403,25 @@ async function createOrderCore({
   const firstPkg = packagesById.get(firstTierPackageId);
   const { distanceKm } = distanceResult;
 
+  // Validate maximum travel distance limit for vehicle category
+  if (firstPkg?.cat_id && typeof prisma?.pkg_category?.findUnique === "function") {
+    const category = await prisma.pkg_category.findUnique({
+      where: { id: Number(firstPkg.cat_id) },
+      select: { id: true, cat_name: true, max_distance: true },
+    });
+    if (category?.max_distance !== null && category?.max_distance !== undefined) {
+      const maxDist = Number(category.max_distance);
+      if (maxDist > 0 && distanceKm > maxDist) {
+        return {
+          ok: false,
+          code: "DISTANCE_EXCEEDED",
+          msg: `Selected vehicle (${category.cat_name}) is limited to a maximum travel distance of ${maxDist} KM. Your trip is ${Math.round(distanceKm)} KM. Please select an eligible vehicle.`,
+          error: "DISTANCE_EXCEEDED",
+        };
+      }
+    }
+  }
+
   // Needs firstPkg.per_km_charge to detect the legacy app's field-swap
   // quirk, so this must run after the package lookup above — and before
   // pricing, since the fare formula itself now bills the radius (matching

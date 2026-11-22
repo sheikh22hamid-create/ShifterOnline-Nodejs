@@ -404,6 +404,8 @@ async function homeData(req, res) {
       img: cat.cat_img,
       image: cat.cat_img,
       icon: cat.cat_img,
+      max_distance: cat.max_distance ? Number(cat.max_distance) : null,
+      max_distance_km: cat.max_distance ? Number(cat.max_distance) : null,
       cat_icon: cat.cat_img,
       cat_image: cat.cat_img,
       vehicle_img: cat.cat_img,

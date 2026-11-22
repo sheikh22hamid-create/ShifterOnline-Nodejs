@@ -584,13 +584,36 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const cleanBodyType = ["open", "covered", "half"].includes(String(body_type || "").toLowerCase())
     ? String(body_type).toLowerCase()
     : "any";
-  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge] = await Promise.all([
+  const categoryPromise = typeof prisma?.pkg_category?.findUnique === "function"
+    ? prisma.pkg_category.findUnique({
+        where: { id: Number(cat_id) },
+        select: { id: true, cat_name: true, max_distance: true },
+      })
+    : Promise.resolve(null);
+
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge, categoryInfo] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
     getBodyTypeCharge(cleanBodyType),
+    categoryPromise,
   ]);
+
+  if (categoryInfo?.max_distance !== null && categoryInfo?.max_distance !== undefined) {
+    const maxDist = Number(categoryInfo.max_distance);
+    if (maxDist > 0 && distanceKm > maxDist) {
+      return {
+        Result: false,
+        is_eligible: false,
+        code: "DISTANCE_EXCEEDED",
+        msg: `Trip distance (${round2(distanceKm)} KM) exceeds the maximum travel distance limit of ${maxDist} KM for ${categoryInfo.cat_name}.`,
+        message: `Trip distance (${round2(distanceKm)} KM) exceeds the maximum travel distance limit of ${maxDist} KM for ${categoryInfo.cat_name}.`,
+        distance_km: round2(distanceKm),
+        max_distance_km: maxDist,
+      };
+    }
+  }
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
   const resolvedExtraMileCharge = Number(extraMileCharge) || 0;

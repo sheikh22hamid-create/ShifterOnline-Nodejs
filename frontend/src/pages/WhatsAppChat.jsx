@@ -966,11 +966,13 @@ export default function WhatsAppChat() {
                   style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
                 >
                   <option value="">Open conversation without sending template</option>
-                  {templates.map((tpl) => (
-                    <option key={tpl.id} value={tpl.id}>
-                      {tpl.title} ({tpl.categoryLabel})
-                    </option>
-                  ))}
+                  {templates
+                    .filter((t) => t.isMetaApproved || t.id.startsWith('shifter_') || t.id === 'hello_world')
+                    .map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>
+                        {tpl.title} ({tpl.categoryLabel})
+                      </option>
+                    ))}
                 </select>
                 <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
                   Since this is a new number, sending an approved template will invite the customer/driver to reply and open their 24h window.
