@@ -154,10 +154,36 @@ async function sendTemplateMessage(to, templateName, languageCode = "en_US", com
   return await callMessagesEndpoint(payload);
 }
 
+/**
+ * Send media message (image, video, or document) via URL link.
+ */
+async function sendMediaMessage(to, mediaType = "image", mediaUrl, caption = null) {
+  const recipient = normalizeRecipient(to);
+  if (!recipient) throw new Error(`Invalid recipient phone: ${to}`);
+  if (!mediaUrl) throw new Error("mediaUrl is required for media message");
+
+  const validTypes = ["image", "video", "document", "audio"];
+  const type = validTypes.includes(mediaType) ? mediaType : "image";
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: recipient,
+    type,
+    [type]: {
+      link: mediaUrl,
+      caption: caption ? String(caption) : undefined,
+    },
+  };
+
+  return await callMessagesEndpoint(payload);
+}
+
 module.exports = {
   getCredentials,
   normalizeRecipient,
   sendTextMessage,
   sendInteractiveButtons,
   sendTemplateMessage,
+  sendMediaMessage,
 };

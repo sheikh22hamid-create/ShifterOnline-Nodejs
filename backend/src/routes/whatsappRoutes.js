@@ -9,6 +9,7 @@ const customerHandler = require("../whatsapp/handlers/customerHandler");
 const trialDriverCloudFlow = require("../whatsapp/trialDriverCloudFlow");
 const { WHATSAPP_TEMPLATES } = require("../whatsapp/templates");
 const templateService = require("../services/whatsappTemplateService");
+const chatService = require("../services/whatsappChatService");
 const { uploadBuffer, urlForRelativePath } = require("../utils/cloudinaryStorage");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
@@ -532,7 +533,7 @@ router.get("/webhook", (req, res) => {
 
 /**
  * POST /api/v1/whatsapp/webhook
- * Receives incoming messages and interactive button clicks from WhatsApp Cloud API.
+ * Receives incoming messages, delivery receipts, and interactive button clicks from WhatsApp Cloud API.
  */
 router.post("/webhook", (req, res) => {
   try {
@@ -542,13 +543,78 @@ router.post("/webhook", (req, res) => {
     // Acknowledge Meta immediately with 200 OK to prevent retries
     res.status(200).send("EVENT_RECEIVED");
 
-    // Process trial driver flow asynchronously
+    // 1. Record in Live Chat Inbox & update threads
+    chatService.processWebhookPayload(body).catch((err) => {
+      logger.error("Error processing WhatsApp webhook in chatService:", err);
+    });
+
+    // 2. Process trial driver flow asynchronously
     trialDriverCloudFlow.handleIncomingMessage(body).catch((err) => {
       logger.error("Error handling WhatsApp incoming message in trial flow:", err);
     });
   } catch (err) {
     logger.error("Error processing WhatsApp webhook payload:", err);
     return res.sendStatus(500);
+  }
+});
+
+/**
+ * GET /api/v1/whatsapp/chat/threads
+ * List conversation threads with 24-hr session window state and unread count.
+ */
+router.get("/chat/threads", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const { search, type, limit, offset } = req.query;
+    const threads = await chatService.getThreads({ search, type, limit, offset });
+    return res.json({ success: true, Result: true, data: threads });
+  } catch (err) {
+    logger.error("GET /chat/threads failed:", err);
+    return res.status(500).json({ success: false, message: "Failed to load chat threads" });
+  }
+});
+
+/**
+ * GET /api/v1/whatsapp/chat/threads/:phone/messages
+ * Get conversation message history for a phone number.
+ */
+router.get("/chat/threads/:phone/messages", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const { limit, offset } = req.query;
+    const result = await chatService.getMessagesByPhone(phone, { limit, offset });
+    return res.json({ success: true, Result: true, data: result });
+  } catch (err) {
+    logger.error(`GET /chat/threads/${req.params.phone}/messages failed:`, err);
+    return res.status(500).json({ success: false, message: "Failed to load messages" });
+  }
+});
+
+/**
+ * POST /api/v1/whatsapp/chat/send
+ * Admin sends a message (free-text within 24h, or template message).
+ */
+router.post("/chat/send", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const { phone, text, mediaUrl, mediaType, isTemplate, templateName, components } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: "phone is required" });
+    }
+
+    const message = await chatService.sendAdminMessage({
+      phone,
+      text,
+      mediaUrl,
+      mediaType,
+      isTemplate: Boolean(isTemplate),
+      templateName,
+      components,
+      adminUser: req.user,
+    });
+
+    return res.json({ success: true, Result: true, data: message });
+  } catch (err) {
+    logger.error("POST /chat/send failed:", err);
+    return res.status(400).json({ success: false, message: err.message || "Failed to send message" });
   }
 });
 

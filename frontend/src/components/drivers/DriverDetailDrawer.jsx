@@ -479,7 +479,20 @@ export default function DriverDetailDrawer({ riderId, onClose, onChanged }) {
               <div className="surface-card grid grid-cols-2 gap-3 rounded-xl p-3.5">
                 <Field
                   label="Mobile"
-                  value={<span className="font-mono-data">{rider.fmobile}</span>}
+                  value={
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono-data">{rider.fmobile}</span>
+                      {rider.fmobile && (
+                        <a
+                          href={`/whatsapp/chat?phone=${rider.fmobile}`}
+                          className="flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                          title="Open WhatsApp Live Chat"
+                        >
+                          💬 WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  }
                   copyable
                   rawCopyValue={rider.fmobile}
                 />
