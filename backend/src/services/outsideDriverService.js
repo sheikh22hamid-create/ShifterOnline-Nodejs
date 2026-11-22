@@ -320,4 +320,4 @@ async function notifyIfAwaited(rider) {
   }
 }
 
-module.exports = { vehicleIdForCategory, vehicleFamily, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
+module.exports = { FAMILY_VEHICLE_ID, vehicleIdForCategory, vehicleFamily, getVehicles, resetCatalogCache, registerTrial, onboardStatus, notifyIfAwaited, lookup, parseSseEvent, driverFromEvent, callStream, FALLBACK_VEHICLES, MAX_LOOKUPS_PER_ORDER };
