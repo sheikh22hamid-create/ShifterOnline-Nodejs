@@ -8,7 +8,9 @@ const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
  */
 function getCredentials() {
   const phoneNumberId = process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID || "1435391406329420";
-  const accessToken = process.env.WHATSAPP_CLOUD_ACCESS_TOKEN || "EAAT6UulZBwI0BTG3ZAtxV3C9LNPISqsGBuasfemdoFHtWkTOvF53dd2Lln4YMeeOibFkJZCitieHDdIt82auxfZCBeMk87EZALXSZA6ujkDEyye4qSxHW9ZBnpfCPC5EiknXZCvW6gRLTGnTIaGUgPLWLPIafOxF9GVdVvnxefrE7rMrFQ2bZCn4TSiCfqRN7ok5ZA8AZDZD";
+  const accessToken =
+    process.env.WHATSAPP_CLOUD_ACCESS_TOKEN ||
+    "EAAT6UulZBwI0BTNT4Ltt5IXfBBeYYQZBhjRPUUvjQxaw2UV6TkwZCd44TaRKIKqWo5VLVjt1IoaCzuZBFU6yaOKkg4d8NQb9w1ZA9bo4kZBCGle0SlAhLo3NZBlWLYui1ZCaKMzi9269WzPa7NdZC8XL0UZCBCIXLQJfw8ovz7SaQOo1SRbcMLF9Msy5LzrnZBH8gZDZD";
 
   return { phoneNumberId, accessToken };
 }
