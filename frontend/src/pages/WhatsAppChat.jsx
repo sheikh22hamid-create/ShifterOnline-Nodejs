@@ -349,8 +349,26 @@ export default function WhatsAppChat() {
     loadThreads()
   }
 
-  const isWindowActive = Boolean(activeThread?.is_window_active)
+  const isWindowActive = Boolean(activeThread?.is_window_active ?? true)
   const windowRemaining = activeThread?.time_remaining_seconds || 0
+
+  const displayMessages =
+    messages.length > 0
+      ? messages
+      : activeThread?.last_message
+      ? [
+          {
+            id: 'last_msg',
+            phone: selectedPhone,
+            sender_name: activeThread.contact_name,
+            direction: 'inbound',
+            message_type: 'text',
+            body: activeThread.last_message,
+            created_at: activeThread.last_message_at,
+            status: 'delivered',
+          },
+        ]
+      : []
 
   return (
     <div className="flex h-[calc(100vh-80px)] flex-col bg-[var(--bg)] text-[var(--ink)]">
@@ -547,17 +565,10 @@ export default function WhatsAppChat() {
 
                     {/* 24-Hour Session Banner */}
                     <div className="flex items-center gap-1.5 mt-0.5 text-[11px]">
-                      {isWindowActive ? (
-                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                          24h Customer Session Active • {formatCountdown(windowRemaining)} • Free Custom Replies Allowed
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
-                          <Clock size={12} />
-                          24h Session Closed • Outbound messages require an Approved Template
-                        </span>
-                      )}
+                      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                        24h Session Active • Manual messaging enabled
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -604,7 +615,7 @@ export default function WhatsAppChat() {
                     <RefreshCw size={20} className="mx-auto mb-2 animate-spin text-emerald-600" />
                     Loading conversation...
                   </div>
-                ) : messages.length === 0 ? (
+                ) : displayMessages.length === 0 ? (
                   <div className="p-12 text-center text-xs" style={{ color: 'var(--ink-muted)' }}>
                     <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
                       <Sparkles size={24} />
@@ -613,13 +624,11 @@ export default function WhatsAppChat() {
                       No messages yet with +{selectedPhone}
                     </p>
                     <p className="mt-1">
-                      {isWindowActive
-                        ? 'Type a message below to start chatting.'
-                        : 'The 24h window is closed. Choose an approved template below to start the conversation.'}
+                      Type a message below to start chatting directly via Meta Cloud API.
                     </p>
                   </div>
                 ) : (
-                  messages.map((msg, index) => {
+                  displayMessages.map((msg, index) => {
                     const isOutbound = msg.direction === 'outbound'
                     return (
                       <div
@@ -718,20 +727,21 @@ export default function WhatsAppChat() {
                   </div>
                 )}
 
-                {/* If Window is CLOSED: Notice + Quick Template Selector */}
-                {!isWindowActive && (
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle size={16} className="shrink-0 text-amber-600" />
-                      <span>
-                        24-hr session closed. Outbound message must be an approved Meta Template.
-                      </span>
+                {/* Template Selected Banner */}
+                {selectedTemplate && (
+                  <div className="flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-800 dark:text-emerald-300 border border-emerald-500/20">
+                    <div className="flex items-center gap-2 truncate">
+                      <Sparkles size={16} />
+                      <span className="font-semibold">Template selected: {templates.find(t => t.id === selectedTemplate)?.title || selectedTemplate}</span>
                     </div>
                     <button
-                      onClick={() => setShowTemplateModal(true)}
-                      className="shrink-0 font-bold underline hover:opacity-80"
+                      onClick={() => {
+                        setSelectedTemplate('')
+                        setInputText('')
+                      }}
+                      className="text-slate-400 hover:text-red-500 transition-colors"
                     >
-                      Select Template
+                      <X size={15} />
                     </button>
                   </div>
                 )}
@@ -748,7 +758,7 @@ export default function WhatsAppChat() {
                   {/* Attachment Button */}
                   <button
                     type="button"
-                    disabled={uploadingMedia || (!isWindowActive && !selectedTemplate)}
+                    disabled={uploadingMedia}
                     onClick={() => fileInputRef.current?.click()}
                     title="Attach Image or Video"
                     className="p-2.5 rounded-xl border hover:bg-[var(--surface-raised)] text-slate-400 transition-colors disabled:opacity-30"
@@ -777,12 +787,8 @@ export default function WhatsAppChat() {
                   <div className="flex-1 relative">
                     <textarea
                       rows={1}
-                      disabled={!isWindowActive && !selectedTemplate}
-                      placeholder={
-                        isWindowActive
-                          ? 'Type a WhatsApp message (Enter to send, Shift+Enter for new line)...'
-                          : 'Select an approved template to send message...'
-                      }
+                      disabled={sending}
+                      placeholder="Type a manual message here (Enter to send, Shift+Enter for new line)..."
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
                       onKeyDown={(e) => {
