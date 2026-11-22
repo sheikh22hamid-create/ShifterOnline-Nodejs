@@ -596,6 +596,59 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
 }
 
 /**
+ * Fetch the live Porter anchor for a pickup/drop, or null (stops, no city, switch off, Porter down, any error).
+ * porterQuoteService is required lazily (it pulls in outsideDriverService, which can require this module back);
+ * the require sits inside the try so a module-load failure also degrades to the rate card.
+ */
+async function fetchPorterAnchor({ cityId = null, catId, plat, plong, dlat, dlong, stops = [] }) {
+  // Stops: no Porter call (waypoint format unverified).
+  if (Array.isArray(stops) && stops.length) return null;
+  try {
+    const { getPorterAnchor } = require("./porterQuoteService");
+    let resolvedCityId = null;
+    try {
+      resolvedCityId = await require("./pickupCityService").resolvePickupCityId(plat, plong);
+    } catch (_) {
+      resolvedCityId = null;
+    }
+    const effectiveCityId = resolvedCityId || cityId || null;
+    if (!effectiveCityId) return null;
+    return (await getPorterAnchor({
+      cityId: effectiveCityId,
+      category: await categoryName(catId),
+      pickup: { lat: Number(plat), lng: Number(plong) },
+      drop: { lat: Number(dlat), lng: Number(dlong) },
+      stops: [],
+    })) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Sanity guard: the Porter-priced fare of one package must be near its rate-card fare (no discount, radius 1). */
+async function porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig = null, modelMultipliers = null, extraMileCharge = 0, coveredBodyCharge = 0, discount = null }) {
+  if (!anchor || !pkg) return false;
+  try {
+    const { withinSanityRange } = require("./porterQuoteService");
+    const now = new Date();
+    const night = isNightFor(applyPlanDiscount(pkg, discount), slabConfig, now);
+    const withAnchor = calculateFareBreakdown(pkg, distanceKm, false, 1, extraMileCharge, slabConfig, modelMultipliers, 0, 0, coveredBodyCharge, now, anchor).total;
+    const withoutAnchor = calculateFareBreakdown(pkg, distanceKm, night, 1, extraMileCharge, slabConfig, modelMultipliers, 0, 0, coveredBodyCharge, now, null).total;
+    return !!withinSanityRange(withAnchor, withoutAnchor);
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Fetch + guard in one call (used by order creation). Resolves to the anchor or null. */
+async function resolvePorterAnchor({ cityId = null, catId, plat, plong, dlat, dlong, stops = [], pkg, distanceKm, slabConfig = null, modelMultipliers = null, extraMileCharge = 0, coveredBodyCharge = 0 }) {
+  const anchor = await fetchPorterAnchor({ cityId, catId, plat, plong, dlat, dlong, stops });
+  if (!anchor) return null;
+  const ok = await porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig, modelMultipliers, extraMileCharge, coveredBodyCharge });
+  return ok ? anchor : null;
+}
+
+/**
  * radiusRangeKm/extraMileCharge are optional. For the customer-facing
  * fare-estimate screen (orderController.fareEstimate), radiusRangeKm is
  * deliberately the customer's own chosen SEARCH radius — a disclosed
@@ -623,38 +676,13 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const cleanBodyType = ["open", "covered", "half"].includes(String(body_type || "").toLowerCase())
     ? String(body_type).toLowerCase()
     : "any";
-  // Required lazily: porterQuoteService pulls in outsideDriverService, which can require this module back.
-  const { getPorterAnchor, withinSanityRange } = require("./porterQuoteService");
-  const fetchPorterAnchor = async () => {
-    // Stops: no Porter call (waypoint format unverified). Any failure -> rate card.
-    if (routeStops.length) return null;
-    try {
-      let resolvedCityId = null;
-      try {
-        resolvedCityId = await require("./pickupCityService").resolvePickupCityId(plat, plong);
-      } catch (_) {
-        resolvedCityId = null;
-      }
-      const effectiveCityId = resolvedCityId || cityId || null;
-      if (!effectiveCityId) return null;
-      return await getPorterAnchor({
-        cityId: effectiveCityId,
-        category: await categoryName(cat_id),
-        pickup: { lat: Number(plat), lng: Number(plong) },
-        drop: { lat: Number(dlat), lng: Number(dlong) },
-        stops: routeStops,
-      });
-    } catch (_) {
-      return null;
-    }
-  };
   const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge, rawPorterAnchor] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
     getBodyTypeCharge(cleanBodyType),
-    fetchPorterAnchor(),
+    fetchPorterAnchor({ cityId, catId: cat_id, plat, plong, dlat, dlong, stops: routeStops }),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
@@ -664,13 +692,12 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   // Sanity guard: if the Porter-priced first package is wildly off its rate-card price, drop the anchor for all packages.
   let porterAnchor = rawPorterAnchor || null;
   if (porterAnchor && packages.length) {
-    const first = packages[0];
-    const guardNow = new Date();
-    const guardExtra = resolvedExtraMileCharge;
-    const guardNight = isNightFor(applyPlanDiscount(first, discount), vehicleSlabConfig, guardNow);
-    const withAnchor = calculateFareBreakdown(first, distanceKm, false, 1, guardExtra, vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, guardNow, porterAnchor).total;
-    const withoutAnchor = calculateFareBreakdown(first, distanceKm, guardNight, 1, guardExtra, vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, guardNow, null).total;
-    if (!withinSanityRange(withAnchor, withoutAnchor)) porterAnchor = null;
+    const ok = await porterAnchorPassesGuard({
+      anchor: porterAnchor, pkg: packages[0], distanceKm, slabConfig: vehicleSlabConfig,
+      modelMultipliers: slabPricingConfig.modelMultipliers, extraMileCharge: resolvedExtraMileCharge,
+      coveredBodyCharge: extraBodyCharge, discount,
+    });
+    if (!ok) porterAnchor = null;
   }
   const estimatePriceSource = porterAnchor ? "porter" : "rate_card";
 
@@ -925,6 +952,9 @@ module.exports = {
   isNightNow,
   isNightFor,
   porterModelFactor,
+  fetchPorterAnchor,
+  porterAnchorPassesGuard,
+  resolvePorterAnchor,
   calculateFare,
   calculateFareBreakdown,
   calculateDriverEarning,

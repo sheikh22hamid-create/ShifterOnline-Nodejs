@@ -251,6 +251,7 @@ model pkg_category {
 model pkg_order {
   id                     Int                @id @default(autoincrement())
   driver_channel         String             @default("app") @db.VarChar(10)
+  porter_quote           Json?
   uid                    Int
   rid                    Int                @default(0)
   order_status           Int                @default(0)

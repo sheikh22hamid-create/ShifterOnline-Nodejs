@@ -451,6 +451,23 @@ async function createOrderCore({
   // as radius_range; the actual radius charge is billed per-driver once
   // dispatch/accept knows who's actually being offered/assigned this order
   // (see dispatchManager.runBatchInner and tripLifecycle.acceptOrder).
+  const orderExtraMileCharge = (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge;
+  // Porter live pricing: anchor the order on the live Porter quote (null -> rate card; stops -> never Porter).
+  // Stored on the order so later repricing (dispatch/accept) stays on the same Porter level.
+  const porterAnchor = typeof pricingEngine.resolvePorterAnchor === "function"
+    ? await pricingEngine.resolvePorterAnchor({
+        cityId: orderCityId,
+        catId: firstPkg?.cat_id || firstPkg?.category || firstPkg?.category_id,
+        plat, plong, dlat, dlong,
+        stops: validStops,
+        pkg: firstPkg,
+        distanceKm,
+        slabConfig: firstVehicleSlabConfig,
+        modelMultipliers: slabPricingConfig?.modelMultipliers,
+        extraMileCharge: orderExtraMileCharge,
+        coveredBodyCharge: bodyTypeCharge,
+      }).catch(() => null)
+    : null;
   const { fare, driverEarning, commission } = (firstVehicleSlabConfig || slabPricingConfig?.modelMultipliers)
     ? pricingEngine.priceForPackage(
         firstPkg,
@@ -460,7 +477,9 @@ async function createOrderCore({
         planDiscount,
         firstVehicleSlabConfig,
         slabPricingConfig?.modelMultipliers,
-        bodyTypeCharge
+        bodyTypeCharge,
+        new Date(),
+        porterAnchor
       )
     : (bodyTypeCharge > 0
         ? pricingEngine.priceForPackage(
@@ -471,14 +490,17 @@ async function createOrderCore({
             planDiscount,
             null,
             null,
-            bodyTypeCharge
+            bodyTypeCharge,
+            new Date(),
+            porterAnchor
           )
         : pricingEngine.priceForPackage(
             firstPkg,
             distanceKm,
             1,
             (Number(extraMileCharge) || 0) + validStops.length * stopSettings.extraStopCharge,
-            planDiscount
+            planDiscount,
+            ...(porterAnchor ? [null, null, 0, new Date(), porterAnchor] : [])
           )
       );
 
@@ -697,6 +719,7 @@ async function createOrderCore({
       schedule_date_time: finalScheduleDateTime,
       ...nextDayFields,
       city_id: orderCityId,
+      porter_quote: porterAnchor || null,
       delivery_type: firstTierPackageId,
       allowed_delivery_types: JSON.stringify(orderedPackageIds),
       trans_id: transactionId || null,
