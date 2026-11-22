@@ -42,15 +42,15 @@ export default function FreeBookingOffer() {
   const toastRef = useRef(toast)
   useEffect(() => { toastRef.current = toast })
   const { user, hasRole } = useAuth()
-  const isSuper = user?.role === 'superadmin'
+  const isSuper = user?.role === 'superadmin' || user?.role === 'admin'
   const canWrite = hasRole('superadmin', 'admin')
 
   const [tab, setTab] = useState('settings')
   const [cities, setCities] = useState([])
   const [cityId, setCityId] = useState(isSuper ? '' : String(user?.city_id ?? ''))
-  // A non-superadmin is pinned to their own city (also covers `user` arriving after the first render).
+  // A non-manager executive is pinned to their own city
   useEffect(() => {
-    if (user && user.role !== 'superadmin') setCityId(String(user.city_id ?? ''))
+    if (user && user.role !== 'superadmin' && user.role !== 'admin') setCityId(String(user.city_id ?? ''))
   }, [user])
 
   const [settings, setSettings] = useState({

@@ -7,7 +7,7 @@ export const QUEUE_ALERT_KINDS = ['guarantee_assigned', 'guarantee_reminder', 'g
  */
 export function queueAlertVisibleTo(data, user) {
   if (!data || !user || !QUEUE_ALERT_KINDS.includes(data.kind)) return false
-  if (user.role === 'superadmin') return true
+  if (user.role === 'superadmin' || user.role === 'admin') return true
   if (user.role === 'admin') return Number(data.city_id) === Number(user.city_id)
   if (user.role === 'executive') {
     if (data.kind === 'guarantee_unassigned') return false

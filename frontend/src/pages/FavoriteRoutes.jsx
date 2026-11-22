@@ -65,7 +65,7 @@ export default function FavoriteRoutes() {
     <div><h1 className="text-2xl font-semibold">Favorite routes</h1><p className="text-sm text-slate-500">Driver preferences, coverage and matching diagnostics.</p></div>
     {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
     <div className="flex flex-wrap gap-3">
-      {user?.role === 'superadmin' && <input aria-label="City ID" className={input} type="number" min="1" placeholder="City ID (blank = global)" value={city} onChange={e => setCity(e.target.value)} />}
+      {(user?.role === 'superadmin' || user?.role === 'admin') && <input aria-label="City ID" className={input} type="number" min="1" placeholder="City ID (blank = global)" value={city} onChange={e => setCity(e.target.value)} />}
       <input aria-label="Driver ID" className={input} type="number" min="1" placeholder="Driver ID (optional)" value={rider} onChange={e => setRider(e.target.value)} />
       <button className={button} disabled={busy} onClick={() => load(1)}>{busy ? 'Loading…' : 'Search / refresh'}</button>
     </div>

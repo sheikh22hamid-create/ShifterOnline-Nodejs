@@ -67,7 +67,7 @@ export default function GuaranteeWorkload() {
   const toastRef = useRef(toast)
   useEffect(() => { toastRef.current = toast })
   const { user } = useAuth()
-  const isSuper = user?.role === 'superadmin'
+  const isSuper = user?.role === 'superadmin' || user?.role === 'admin'
   const [cityId, setCityId] = useState('')
   const [cities, setCities] = useState([])
   const [busy, setBusy] = useState(false)

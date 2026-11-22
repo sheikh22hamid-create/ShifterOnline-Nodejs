@@ -35,7 +35,7 @@ async function list(req, res) {
   try {
     const where = {};
 
-    if (req.user.role === "superadmin") {
+    if (req.user.role === "superadmin" || req.user.role === "admin") {
       if (req.query.role) {
         if (!ADMIN_ROLES.includes(req.query.role)) {
           return res.status(400).json({ success: false, message: `role must be one of ${ADMIN_ROLES.join(", ")}` });
@@ -44,7 +44,6 @@ async function list(req, res) {
       }
       if (req.query.city_id) where.city_id = parseInt(req.query.city_id, 10);
     } else {
-      // City admins only ever see the executives assigned to their own city.
       where.role = "executive";
       where.city_id = parseInt(req.user.city_id, 10);
     }
@@ -81,11 +80,7 @@ async function create(req, res) {
     let finalRole = role;
     let finalCityId = city_id ? parseInt(city_id, 10) : null;
 
-    if (actor.role === "admin") {
-      // City admins may only ever create executives, scoped to their own city.
-      finalRole = "executive";
-      finalCityId = parseInt(actor.city_id, 10);
-    } else if (finalRole !== "superadmin" && !finalCityId) {
+    if (finalRole !== "superadmin" && !finalCityId) {
       return res.status(400).json({ success: false, message: "city_id is required for admin/executive accounts" });
     }
 
@@ -142,7 +137,7 @@ async function update(req, res) {
       return res.status(404).json({ success: false, message: "Staff account not found" });
     }
 
-    if (actor.role === "admin" && (target.role !== "executive" || target.city_id !== parseInt(actor.city_id, 10))) {
+    if (actor.role !== "superadmin" && actor.role !== "admin" && (target.role !== "executive" || target.city_id !== parseInt(actor.city_id, 10))) {
       return res.status(403).json({ success: false, message: "Forbidden: can only update executives in your own city" });
     }
 
@@ -153,7 +148,7 @@ async function update(req, res) {
     if (mobile !== undefined) data.mobile = mobile;
     if (status !== undefined) data.status = Boolean(status);
 
-    if (actor.role === "superadmin") {
+    if (actor.role === "superadmin" || actor.role === "admin") {
       if (role !== undefined) {
         if (!ADMIN_ROLES.includes(role)) {
           return res.status(400).json({ success: false, message: `role must be one of ${ADMIN_ROLES.join(", ")}` });

@@ -50,7 +50,7 @@ import {
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
 const MANAGERS = ['superadmin', 'admin']
-const SUPERADMIN_ONLY = ['superadmin']
+const SUPERADMIN_ONLY = ['superadmin', 'admin']
 
 export const NAV_GROUPS = [
   {
@@ -124,12 +124,12 @@ export const NAV_GROUPS = [
       { to: '/cms/goods-types', label: 'Goods Types', icon: PackageOpen, roles: ALL_STAFF, built: true },
       { to: '/cms/restricted-items', label: 'Restricted Items', icon: ShieldAlert, roles: ALL_STAFF, built: true },
       { to: '/cms/booking-guidelines', label: 'Booking Guidelines', icon: ShieldAlert, roles: ALL_STAFF, built: true },
-      { to: '/cms/bot-file', label: 'Bot File (AI Knowledge)', icon: Bot, roles: ['superadmin'], built: true },
-      { to: '/cms/whatsapp-account', label: 'WhatsApp Account', icon: Smartphone, roles: ['superadmin'], built: true },
-      { to: '/settings/dynamic-questions', label: 'Dynamic Questions', icon: ListChecks, roles: ['superadmin'], built: true },
-      { to: '/settings', label: 'Payment Gateways', icon: CreditCard, roles: ['superadmin'], built: true },
+      { to: '/cms/bot-file', label: 'Bot File (AI Knowledge)', icon: Bot, roles: MANAGERS, built: true },
+      { to: '/cms/whatsapp-account', label: 'WhatsApp Account', icon: Smartphone, roles: MANAGERS, built: true },
+      { to: '/settings/dynamic-questions', label: 'Dynamic Questions', icon: ListChecks, roles: MANAGERS, built: true },
+      { to: '/settings', label: 'Payment Gateways', icon: CreditCard, roles: MANAGERS, built: true },
       { to: '/staff', label: 'Staff Management', icon: UserCog, roles: MANAGERS, built: true },
-      { to: '/settings', label: 'Platform Settings', icon: Settings, roles: ['superadmin'], built: true },
+      { to: '/settings', label: 'Platform Settings', icon: Settings, roles: MANAGERS, built: true },
     ],
   },
 ]

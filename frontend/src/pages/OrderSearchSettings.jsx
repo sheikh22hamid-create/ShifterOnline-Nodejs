@@ -36,13 +36,13 @@ export default function OrderSearchSettings() {
   const toastRef = useRef(toast)
   useEffect(() => { toastRef.current = toast })
   const { user, hasRole } = useAuth()
-  const isSuper = user?.role === 'superadmin'
+  const isSuper = user?.role === 'superadmin' || user?.role === 'admin'
   const canWrite = hasRole('superadmin', 'admin')
 
   const [cities, setCities] = useState([])
   const [cityId, setCityId] = useState(isSuper ? '' : String(user?.city_id ?? ''))
   useEffect(() => {
-    if (user && user.role !== 'superadmin') setCityId(String(user.city_id ?? ''))
+    if (user && user.role !== 'superadmin' && user.role !== 'admin') setCityId(String(user.city_id ?? ''))
   }, [user])
 
   const [form, setForm] = useState(EMPTY)

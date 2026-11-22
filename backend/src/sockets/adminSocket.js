@@ -28,7 +28,7 @@ function registerAdminHandlers(io, socket) {
       socket.join("admins_all");
 
       const roleLower = String(payload.role || "").toLowerCase();
-      if (roleLower === "superadmin" || roleLower === "super_admin") {
+      if (roleLower === "superadmin" || roleLower === "super_admin" || roleLower === "admin") {
         socket.join("admin_super");
       }
       if (payload.city_id) {

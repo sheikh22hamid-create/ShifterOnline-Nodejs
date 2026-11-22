@@ -581,12 +581,15 @@ async function sendAdminMessage({
 
     // Map legacy local template names to Meta approved template names
     let metaTemplateName = templateName;
-    if (templateName === "customer_app_download") {
-      metaTemplateName = "shifter_customer_welcome";
-    } else if (templateName === "driver_app_download") {
+    const lowerName = String(templateName).toLowerCase();
+    if (lowerName === "hello_world") {
+      metaTemplateName = "hello_world";
+    } else if (lowerName.includes("driver")) {
       metaTemplateName = "shifter_driver_onboard";
-    } else if (templateName === "sales_booking_followup") {
+    } else if (lowerName.includes("sales") || lowerName.includes("booking") || lowerName.includes("payment")) {
       metaTemplateName = "shifter_booking_followup";
+    } else {
+      metaTemplateName = "shifter_customer_welcome";
     }
 
     messageType = "template";
