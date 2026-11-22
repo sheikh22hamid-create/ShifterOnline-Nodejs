@@ -17,6 +17,8 @@ const {
   InvalidSectionsError,
 } = require("../services/driverTierInfo");
 
+const porterLiveSettings = require("../services/porterLiveSettings");
+
 const PACKAGE_TYPES = ["USER", "DRIVER"];
 
 // tbl_package.driver_card_subtitle / driver_info_subtitle are VarChar(255) -
@@ -856,7 +858,29 @@ async function generateModels(req, res) {
   }
 }
 
+async function getPorterLive(req, res) {
+  try {
+    const config = await porterLiveSettings.getConfig();
+    return res.status(200).json({ success: true, data: { config } });
+  } catch (err) {
+    return internalError(res, err, "rateCards.getPorterLive");
+  }
+}
+
+async function updatePorterLive(req, res) {
+  let config;
+  try {
+    config = await porterLiveSettings.saveConfig(req.body || {});
+  } catch (err) {
+    if (err && err.message && !err.code) return res.status(400).json({ success: false, message: err.message });
+    return internalError(res, err, "rateCards.updatePorterLive");
+  }
+  return res.status(200).json({ success: true, message: "Porter live pricing saved", data: { config } });
+}
+
 module.exports = {
+  getPorterLive,
+  updatePorterLive,
   _validateCompensation: validateCompensation,
   list,
   getOne,
