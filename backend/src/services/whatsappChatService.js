@@ -578,12 +578,23 @@ async function sendAdminMessage({
   // 2. Dispatch via Meta Cloud API
   if (isTemplate) {
     if (!templateName) throw new Error("Template name is required for template messages");
+
+    // Map legacy local template names to Meta approved template names
+    let metaTemplateName = templateName;
+    if (templateName === "customer_app_download") {
+      metaTemplateName = "shifter_customer_welcome";
+    } else if (templateName === "driver_app_download") {
+      metaTemplateName = "shifter_driver_onboard";
+    } else if (templateName === "sales_booking_followup") {
+      metaTemplateName = "shifter_booking_followup";
+    }
+
     messageType = "template";
-    storedBody = text || `[Template: ${templateName}]`;
+    storedBody = text || `[Template: ${metaTemplateName}]`;
 
     metaResponse = await cloudApi.sendTemplateMessage(
       normalized,
-      templateName,
+      metaTemplateName,
       templateLanguage,
       components
     );

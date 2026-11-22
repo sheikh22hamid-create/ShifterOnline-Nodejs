@@ -9,6 +9,42 @@ const HELPLINE_NUMBER = "+91 9109114515";
 
 const WHATSAPP_TEMPLATES = [
   {
+    id: "shifter_customer_welcome",
+    title: "📲 Customer App Download & Welcome (Meta Approved)",
+    category: "customer",
+    categoryLabel: "Customer App",
+    description: "Meta approved welcome message with customer app download link.",
+    message:
+      "Namaste! Welcome to Shifter Online. Book mini trucks and tempos (Tata Ace, Pickup, 3-Wheeler) at affordable fares with verified drivers. Download the Shifter App now or reply to this message to book. Team Shifter Online.",
+  },
+  {
+    id: "shifter_driver_onboard",
+    title: "🚚 Driver Partner App & Onboarding (Meta Approved)",
+    category: "driver",
+    categoryLabel: "Driver Onboarding",
+    description: "Meta approved driver onboarding and registration invite.",
+    message:
+      "Namaste Driver Partner! Attach your vehicle (Tata Ace, Pickup, 3-Wheeler) with Shifter Online and earn daily guaranteed income. Download the Shifter Driver App now to register or reply to this message for support. Team Shifter Online.",
+  },
+  {
+    id: "shifter_booking_followup",
+    title: "💼 Booking Enquiry Follow-up (Meta Approved)",
+    category: "sales",
+    categoryLabel: "Sales Follow-up",
+    description: "Meta approved sales follow-up message for goods transport leads.",
+    message:
+      "Namaste! Thank you for contacting Shifter Online for goods transport. Our team is ready to help you with vehicle booking and best quotes. Reply to this message or call our helpline to book your tempo. Team Shifter Online.",
+  },
+  {
+    id: "hello_world",
+    title: "👋 Hello World (Meta Default Sample)",
+    category: "utility",
+    categoryLabel: "Meta Sample",
+    description: "Official Meta Cloud API test template.",
+    message:
+      "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.",
+  },
+  {
     id: "customer_app_download",
     title: "📲 Customer App Download & Welcome",
     category: "customer",
