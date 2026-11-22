@@ -13,20 +13,38 @@ Future<void> shareReferralInvite() async {
   final code = storage.read('referral_code')?.toString() ??
       storage.read('UserLogin')?['referral_code']?.toString() ??
       '';
-  final msg = storage.read('referral_msg')?.toString() ??
-      'Hey! Use my referral code to sign up on Shifter Online and earn rewards!';
+  final defaultMsg =
+      "🚚 *Shifter Online — Smart Online Bhada Booking Platform!*\n\n"
+      "Kisi bhi saman shifting ya delivery ke liye online book karein Tata Ace, Pickup ya 3-Wheeler!\n\n"
+      "🌟 *Aapko Kya Milega:*\n"
+      "✅ *Lowest Fare:* Market me sabse sasta aur transparent bhada\n"
+      "✅ *100% Free Ride Chance:* Har ride par free trip jeetne ka mauka\n"
+      "✅ *No-Driver Compensation:* Driver assign na hone par compensation\n"
+      "✅ *Receiver Commission:* Har delivery par commission earn karne ka option\n\n"
+      "🎁 *Use my Referral Code for instant rewards:*\n"
+      "👉 My Referral Code: {CODE}\n\n"
+      "📲 *Download App:* https://play.google.com/store/apps/details?id=com.shifter.online&pcampaignid=web_share";
+
+  final msg = storage.read('referral_msg')?.toString() ?? defaultMsg;
   String? packageName;
   try {
     packageName = (await PackageInfo.fromPlatform()).packageName;
   } catch (_) {}
-  final text = StringBuffer(msg);
-  if (code.isNotEmpty) {
-    text.write('\n\nReferral Code: $code');
+
+  String shareText;
+  if (msg.contains('{CODE}')) {
+    shareText = msg.replaceAll('{CODE}', code);
+  } else {
+    final text = StringBuffer(msg);
+    if (code.isNotEmpty) {
+      text.write('\n\nReferral Code: $code');
+    }
+    if (packageName != null) {
+      text.write('\n\nDownload: https://play.google.com/store/apps/details?id=$packageName');
+    }
+    shareText = text.toString();
   }
-  if (packageName != null) {
-    text.write('\n\nDownload: https://play.google.com/store/apps/details?id=$packageName');
-  }
-  await Share.share(text.toString(), subject: 'Refer & Earn - Shifter Online');
+  await Share.share(shareText, subject: 'Refer & Earn - Shifter Online');
 }
 
 /// Shows the customer's Free Booking state while the offer is live in their city:

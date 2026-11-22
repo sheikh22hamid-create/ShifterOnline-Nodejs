@@ -5,6 +5,7 @@ const { buildRoute } = require("../services/tripRouteService");
 const { getCustomerWalletMaxTopup } = require("../services/driverWalletSettings");
 const rewardPlanService = require("../services/rewardPlanService");
 const { resolveHowToUseUrl } = require("../utils/howToUse");
+const { CUSTOMER_REFERRAL_MESSAGE, DRIVER_REFERRAL_MESSAGE } = require("../constants/referralMessages");
 
 // Node port of several small read-mostly cust_api/*.php endpoints:
 // add_favorite_driver.php, get_favorite_drivers.php, couponlist.php,
@@ -542,7 +543,8 @@ async function homeData(req, res) {
       OrderHistory: orderHistory,
       DeviceMatch: deviceMatch,
       referral_code: user?.reffer_code || "",
-      referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
+      referral_msg: CUSTOMER_REFERRAL_MESSAGE,
+      driver_referral_msg: DRIVER_REFERRAL_MESSAGE,
       has_plan_discount: hasPlanDiscount,
       plan_discount_percent: planDiscountPercent,
       plan_name: planName,

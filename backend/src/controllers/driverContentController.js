@@ -8,6 +8,7 @@ const { formatBuyOrderForDriver } = require("./legacyOrderController");
 const deviceSessionService = require("../services/deviceSessionService");
 const { uniqueRefferCode } = require("./riderAuthController");
 const { getAutoVerificationSettings, vehicleSlug } = require("../utils/driverVerificationSettings");
+const { DRIVER_REFERRAL_MESSAGE } = require("../constants/referralMessages");
 
 // Node port of several rider_api/*.php endpoints confirmed still called by
 // the native Android driver app (ShifterDriver/app/src/main/java/.../UserService.java):
@@ -193,7 +194,7 @@ async function homeData(req, res) {
       BuyOrderHistory: activeBuyOrderHistory,
       referral_code: referralCode,
       referral_points: rider.referral_points || 0,
-      referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
+      referral_msg: DRIVER_REFERRAL_MESSAGE,
       customer_care_number: customerCareNumber,
       customer_care_email: customerCareEmail,
       customer_care_hours: customerCareHours,
@@ -264,7 +265,7 @@ async function pageList(req, res) {
       Result: "true",
       ResponseMsg: list.length ? "Pages List Founded!" : "Pages list empty",
       referral_code: referralCode,
-      referral_msg: "Hey! Use my referral code to sign up on Shifter Online and earn exciting rewards!",
+      referral_msg: DRIVER_REFERRAL_MESSAGE,
       customer_care_number: careMap.customer_care_number || "+91 9109114515",
       customer_care_email: careMap.customer_care_email || "support@shifteronline.com",
       customer_care_hours: careMap.customer_care_hours || "24/7 Helpline",
