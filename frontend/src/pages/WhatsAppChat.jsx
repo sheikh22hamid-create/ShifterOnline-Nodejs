@@ -280,6 +280,13 @@ export default function WhatsAppChat() {
     if (!selectedPhone) return
     if (!inputText.trim() && !mediaAttachment && !selectedTemplate) return
 
+    // Meta Policy: Free text outside 24h window is rejected by Meta
+    if (!selectedTemplate && activeThread && !activeThread.is_window_active) {
+      toast.error('Customer ki 24-Hour window band hai. Meta ke niyam ke mutabiq Approved Template message hi bheja ja sakta hai.')
+      setShowTemplateModal(true)
+      return
+    }
+
     try {
       setSending(true)
       const payload = {
@@ -585,10 +592,17 @@ export default function WhatsAppChat() {
 
                     {/* 24-Hour Session Banner */}
                     <div className="flex items-center gap-1.5 mt-0.5 text-[11px]">
-                      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-                        24h Session Active • Manual messaging enabled
-                      </span>
+                      {activeThread?.is_window_active ? (
+                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                          24h Session Active {activeThread.time_remaining_seconds ? `(${formatCountdown(activeThread.time_remaining_seconds)})` : ''} • Manual messaging enabled
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold">
+                          <AlertCircle size={13} />
+                          24h Window Closed • Send an approved template to message
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -743,6 +757,25 @@ export default function WhatsAppChat() {
                       className="text-slate-400 hover:text-red-500 transition-colors"
                     >
                       <X size={15} />
+                    </button>
+                  </div>
+                )}
+
+                {/* 24-Hour Window Closed Guidance */}
+                {activeThread && !activeThread.is_window_active && !selectedTemplate && (
+                  <div className="flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 border border-amber-500/20">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={15} className="shrink-0 text-amber-600" />
+                      <span>
+                        <strong>24h Window Closed:</strong> Customer/driver ko message bhejne ke liye <strong>Templates</strong> button par click karke approved template select karein.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTemplateModal(true)}
+                      className="ml-2 shrink-0 rounded-md bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors"
+                    >
+                      Pick Template
                     </button>
                   </div>
                 )}

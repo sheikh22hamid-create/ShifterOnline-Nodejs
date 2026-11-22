@@ -15,6 +15,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
@@ -51,7 +52,7 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class LeadReferralActivity extends LocaleAwareActivity {
+public class LeadReferralActivity extends AppCompatActivity {
 
     private static final int REQ_CONTACTS_PERMISSION = 201;
 
@@ -72,9 +73,13 @@ public class LeadReferralActivity extends LocaleAwareActivity {
         binding = ActivityLeadReferralBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        // Safe bottom insets for system navigation bar (3-button / gesture bar)
+        // Safe bottom insets for system navigation bar & soft keyboard handling
         ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
             Insets navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            boolean isKeyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
+            if (binding.layoutBottomSubmit != null && binding.layoutContactsTab.getVisibility() == View.VISIBLE) {
+                binding.layoutBottomSubmit.setVisibility(isKeyboardVisible ? View.GONE : View.VISIBLE);
+            }
             v.setPadding(0, 0, 0, navInsets.bottom);
             return insets;
         });
@@ -182,6 +187,12 @@ public class LeadReferralActivity extends LocaleAwareActivity {
         });
 
         // Search in contacts
+        binding.edSearchContact.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus && binding.appBarContacts != null) {
+                binding.appBarContacts.setExpanded(false, true);
+            }
+        });
+
         binding.edSearchContact.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
@@ -192,6 +203,12 @@ public class LeadReferralActivity extends LocaleAwareActivity {
                 String q = s != null ? s.toString() : "";
                 contactAdapter.filter(q);
                 binding.imgClearSearch.setVisibility(q.isEmpty() ? View.GONE : View.VISIBLE);
+                boolean isEmpty = contactAdapter.getItemCount() == 0;
+                binding.txtEmptyContacts.setVisibility(isEmpty ? View.VISIBLE : View.GONE);
+                binding.recyclerContacts.setVisibility(isEmpty ? View.GONE : View.VISIBLE);
+                if (!q.isEmpty() && binding.appBarContacts != null) {
+                    binding.appBarContacts.setExpanded(false, true);
+                }
             }
 
             @Override
@@ -199,7 +216,12 @@ public class LeadReferralActivity extends LocaleAwareActivity {
             }
         });
 
-        binding.imgClearSearch.setOnClickListener(v -> binding.edSearchContact.setText(""));
+        binding.imgClearSearch.setOnClickListener(v -> {
+            binding.edSearchContact.setText("");
+            if (binding.appBarContacts != null) {
+                binding.appBarContacts.setExpanded(true, true);
+            }
+        });
 
         // Bottom submit leads button
         binding.btnSubmitLeads.setOnClickListener(v -> submitSelectedLeads());
