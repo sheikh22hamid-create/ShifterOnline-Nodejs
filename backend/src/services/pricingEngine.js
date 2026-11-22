@@ -615,7 +615,7 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
  * at its default (1 -> zero radius charge) quotes the best-case "starting
  * from" fare when no radius is supplied.
  */
-async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [], body_type = "any" }) {
+async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [], body_type = "any", cityId = null }) {
   const routeStops = Array.isArray(stops) ? stops : [];
   const stopSettings = await getAddStopSettings(cat_id);
   if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
@@ -623,20 +623,60 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const cleanBodyType = ["open", "covered", "half"].includes(String(body_type || "").toLowerCase())
     ? String(body_type).toLowerCase()
     : "any";
-  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge] = await Promise.all([
+  // Required lazily: porterQuoteService pulls in outsideDriverService, which can require this module back.
+  const { getPorterAnchor, withinSanityRange } = require("./porterQuoteService");
+  const fetchPorterAnchor = async () => {
+    // Stops: no Porter call (waypoint format unverified). Any failure -> rate card.
+    if (routeStops.length) return null;
+    try {
+      let resolvedCityId = null;
+      try {
+        resolvedCityId = await require("./pickupCityService").resolvePickupCityId(plat, plong);
+      } catch (_) {
+        resolvedCityId = null;
+      }
+      const effectiveCityId = resolvedCityId || cityId || null;
+      if (!effectiveCityId) return null;
+      return await getPorterAnchor({
+        cityId: effectiveCityId,
+        category: await categoryName(cat_id),
+        pickup: { lat: Number(plat), lng: Number(plong) },
+        drop: { lat: Number(dlat), lng: Number(dlong) },
+        stops: routeStops,
+      });
+    } catch (_) {
+      return null;
+    }
+  };
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge, rawPorterAnchor] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
     getBodyTypeCharge(cleanBodyType),
+    fetchPorterAnchor(),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
   const resolvedExtraMileCharge = Number(extraMileCharge) || 0;
   const vehicleSlabConfig = await resolveVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
 
+  // Sanity guard: if the Porter-priced first package is wildly off its rate-card price, drop the anchor for all packages.
+  let porterAnchor = rawPorterAnchor || null;
+  if (porterAnchor && packages.length) {
+    const first = packages[0];
+    const guardNow = new Date();
+    const guardExtra = resolvedExtraMileCharge;
+    const guardNight = isNightFor(applyPlanDiscount(first, discount), vehicleSlabConfig, guardNow);
+    const withAnchor = calculateFareBreakdown(first, distanceKm, false, 1, guardExtra, vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, guardNow, porterAnchor).total;
+    const withoutAnchor = calculateFareBreakdown(first, distanceKm, guardNight, 1, guardExtra, vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, guardNow, null).total;
+    if (!withinSanityRange(withAnchor, withoutAnchor)) porterAnchor = null;
+  }
+  const estimatePriceSource = porterAnchor ? "porter" : "rate_card";
+
   return {
     Result: true,
+    price_source: estimatePriceSource,
     distance_km: round2(distanceKm),
     duration_min: durationMin,
     has_plan_discount: !!discount,
@@ -654,17 +694,17 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     packages: packages.map((pkg) => {
       const discountedPkg = applyPlanDiscount(pkg, discount);
       const quotedAt = new Date();
-      const isNight = isNightFor(discountedPkg, vehicleSlabConfig, quotedAt);
+      const isNight = porterAnchor ? false : isNightFor(discountedPkg, vehicleSlabConfig, quotedAt);
       const combinedExtraCharge = resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge;
 
       const grossBreakdown = calculateFareBreakdown(
         pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
-        vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, quotedAt
+        vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, quotedAt, porterAnchor
       );
       const isSlabPriced = vehicleSlabConfig && pkg?.use_linear_pricing !== true;
       const pkgForNet = isSlabPriced ? pkg : discountedPkg;
       const netBreakdown = discount
-        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, extraBodyCharge, quotedAt)
+        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, extraBodyCharge, quotedAt, porterAnchor)
         : grossBreakdown;
 
       return {
@@ -687,6 +727,7 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
         discount_amount: round2(Math.max(0, grossBreakdown.total - netBreakdown.total)),
         estimated_fare: netBreakdown.total,
         is_night: isNight,
+        price_source: estimatePriceSource,
       };
     }),
   };
