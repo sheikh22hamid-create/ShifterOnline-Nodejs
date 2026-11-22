@@ -83,6 +83,7 @@ app.use("/rider", riderRoutes);
 app.use("/api/location", locationRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/whatsapp", whatsappRoutes);
+app.use("/api/v1/admin/whatsapp", whatsappRoutes);
 
 // Safety net beyond each controller's own try/catch — never leak stack traces.
 app.use((err, req, res, next) => {

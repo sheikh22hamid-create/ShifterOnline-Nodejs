@@ -24,6 +24,7 @@ import {
 import api from '../services/api'
 import { useSocket } from '../context/SocketContext'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 
 function formatTime(isoString) {
   if (!isoString) return ''
@@ -52,6 +53,7 @@ function formatCountdown(seconds) {
 export default function WhatsAppChat() {
   const { user } = useAuth()
   const { socket } = useSocket()
+  const toast = useToast()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const queryPhone = searchParams.get('phone')
@@ -93,7 +95,7 @@ export default function WhatsAppChat() {
   // Load Templates
   useEffect(() => {
     api
-      .get('/whatsapp/templates')
+      .get('/../whatsapp/templates')
       .then((res) => {
         if (res.data?.data) {
           setTemplates(res.data.data)
@@ -106,7 +108,7 @@ export default function WhatsAppChat() {
   const loadThreads = useCallback(async () => {
     try {
       setLoadingThreads(true)
-      const res = await api.get('/whatsapp/chat/threads', {
+      const res = await api.get('/../whatsapp/chat/threads', {
         params: { search: searchQuery || undefined, type: filterType },
       })
       const data = res.data?.data || []
@@ -140,7 +142,7 @@ export default function WhatsAppChat() {
     if (!phone) return
     try {
       setLoadingMessages(true)
-      const res = await api.get(`/whatsapp/chat/threads/${phone}/messages`)
+      const res = await api.get(`/../whatsapp/chat/threads/${phone}/messages`)
       const data = res.data?.data
       if (data) {
         setActiveThread(data.thread)
@@ -249,19 +251,23 @@ export default function WhatsAppChat() {
       setUploadingMedia(true)
       const formData = new FormData()
       formData.append('media', file)
-      const res = await api.post('/whatsapp/upload-media', formData, {
+      const res = await api.post('/../whatsapp/upload-media', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      if (res.data?.success && res.data.mediaUrl) {
+      if (res.data?.success && (res.data.data?.url || res.data.mediaUrl)) {
+        const mediaUrl = res.data.data?.url || res.data.mediaUrl
+        const mediaType = res.data.data?.mediaType || res.data.mediaType || (isVideo ? 'video/mp4' : 'image/jpeg')
         setMediaAttachment({
-          url: res.data.mediaUrl,
-          type: res.data.mediaType || (isVideo ? 'video/mp4' : 'image/jpeg'),
+          url: mediaUrl,
+          type: mediaType,
           name: file.name,
         })
+        toast.success(`${isVideo ? 'Video' : 'Image'} uploaded successfully`)
       }
     } catch (err) {
       console.error('Media upload failed:', err)
-      alert(err.response?.data?.message || 'Failed to upload media file')
+      const errorMsg = err.response?.data?.message || err.response?.data?.msg || err.message || 'Failed to upload media file'
+      toast.error(errorMsg)
     } finally {
       setUploadingMedia(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -293,7 +299,13 @@ export default function WhatsAppChat() {
         }
       }
 
-      await api.post('/whatsapp/chat/send', payload)
+      const res = await api.post('/../whatsapp/chat/send', payload)
+      if (res.data?.data) {
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === res.data.data.id || (m.message_id && m.message_id === res.data.data.message_id))
+          return exists ? prev : [...prev, res.data.data]
+        })
+      }
 
       // Reset input
       setInputText('')
@@ -303,7 +315,13 @@ export default function WhatsAppChat() {
       setTimeout(scrollToBottom, 100)
     } catch (err) {
       console.error('Failed to send message:', err)
-      alert(err.response?.data?.message || 'Failed to deliver message via WhatsApp')
+      const errorMsg =
+        err.response?.data?.message ||
+        err.response?.data?.msg ||
+        err.response?.data?.error ||
+        err.message ||
+        'Failed to deliver message via WhatsApp'
+      toast.error(errorMsg)
     } finally {
       setSending(false)
     }
@@ -316,7 +334,7 @@ export default function WhatsAppChat() {
 
     const clean = newChatPhone.replace(/\D/g, '')
     if (clean.length < 10) {
-      alert('Please enter a valid 10-digit mobile number')
+      toast.error('Please enter a valid 10-digit mobile number')
       return
     }
 
@@ -327,14 +345,16 @@ export default function WhatsAppChat() {
       try {
         setSending(true)
         const tplObj = templates.find((t) => t.id === newChatTemplate)
-        await api.post('/whatsapp/chat/send', {
+        await api.post('/../whatsapp/chat/send', {
           phone: formatted,
           isTemplate: true,
           templateName: newChatTemplate,
           text: tplObj?.message,
         })
+        toast.success(`Template sent to +${formatted}`)
       } catch (err) {
-        alert(err.response?.data?.message || 'Failed to send template to new contact')
+        const errorMsg = err.response?.data?.message || err.response?.data?.msg || err.message || 'Failed to send template to new contact'
+        toast.error(errorMsg)
         setSending(false)
         return
       } finally {
