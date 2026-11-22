@@ -467,3 +467,67 @@ describe("time-of-day surcharge bands in the fare engine", () => {
     expect(at("Model 1", evening).isNight).toBe(1);
   });
 });
+
+describe("porter anchor", () => {
+  const { porterModelFactor, calculateFareBreakdown, calculateRadiusCharge } = require("../pricingEngine");
+  const m = { models: [
+    { model: "Model 1", offset_percent: -10 }, { model: "Model 2", offset_percent: 0 },
+    { model: "Model 3", offset_percent: 8 }, { model: "Model 4", offset_percent: 20 }, { model: "Model 5", offset_percent: 40 },
+  ] };
+  const slabCfg = {
+    vehicle_key: "three_wheeler", min_charge: 148, markup_percent: 10,
+    rates: { "0_1": 17.8, "1_5": 17.8, "5_10": 17.8 },
+    time_bands: [{ from: "21:00", to: "23:00", amount: 63.64 }, { from: "23:00", to: "06:00", amount: 136.36 }],
+  };
+  const mk = (title, extra = {}) => ({
+    id: 1, title, cat_id: 4, min_charge: "1", per_km_charge: "1", service_charge_percent: "10",
+    start_time: "1970-01-01T21:00:00.000Z", end_time: "1970-01-01T06:00:00.000Z", night_charge_percent: "150", ...extra,
+  });
+  const dayDate = new Date("2026-11-02T05:30:00.000Z"); // 11:00 IST
+  const nightDate = new Date("2026-11-02T18:06:00.000Z"); // 23:36 IST
+  const anchor = { fare: 300, quoted_at: "2026-11-02T05:30:00.000Z" };
+
+  it("porterModelFactor is relative to Model 3", () => {
+    expect(porterModelFactor({ title: "Model 3" }, m)).toBe(1);
+    expect(porterModelFactor({ title: "Model 1" }, m)).toBeCloseTo(0.9 / 1.08, 6);
+    expect(porterModelFactor({ title: "Model 5" }, m)).toBeCloseTo(1.4 / 1.08, 6);
+    expect(porterModelFactor({ title: "Mystery" }, m)).toBe(1);
+  });
+
+  it("Model 3 gets the Porter fare as-is, Model 1 is scaled", () => {
+    const r = priceForPackage(mk("Model 3"), 7, 1, 0, null, slabCfg, m, 0, dayDate, anchor);
+    expect(r.fare).toBe(300);
+    expect(r.priceSource).toBe("porter");
+    expect(priceForPackage(mk("Model 1"), 7, 1, 0, null, slabCfg, m, 0, dayDate, anchor).fare).toBe(Math.round(300 * 0.9 / 1.08));
+  });
+
+  it("adds no night / time-band charge", () => {
+    const r = priceForPackage(mk("Model 3"), 7, 1, 0, null, slabCfg, m, 0, nightDate, anchor);
+    expect(r.fare).toBe(300);
+    expect(r.isNight).toBe(false);
+  });
+
+  it("adds radius charge, caps discount, adds body charge", () => {
+    const pkg = mk("Model 3", { pickup_per_km_charge: 10 });
+    expect(priceForPackage(pkg, 7, 5, 0, null, slabCfg, m, 0, dayDate, anchor).fare).toBe(300 + Math.round(calculateRadiusCharge(pkg, 5)));
+    expect(priceForPackage(mk("Model 3"), 7, 1, 0, { percent: 10, maxCap: 20 }, slabCfg, m, 0, dayDate, anchor).fare).toBe(280);
+    expect(priceForPackage(mk("Model 3"), 7, 1, 0, null, slabCfg, m, 50, dayDate, anchor).fare).toBe(350);
+  });
+
+  it("without an anchor it is the rate card and priceSource is rate_card", () => {
+    const r = priceForPackage(mk("Model 3"), 7, 1, 0, null, slabCfg, m, 0, dayDate);
+    expect(r.priceSource).toBe("rate_card");
+    expect(r.fare).not.toBe(300);
+    expect(r.fare).toBe(priceForPackage(mk("Model 3"), 7, 1, 0, null, slabCfg, m, 0, dayDate, null).fare);
+  });
+
+  it("calculateFareBreakdown with anchor matches calculateFare", () => {
+    const pkg = mk("Model 1");
+    const b = calculateFareBreakdown(pkg, 7, false, 1, 0, slabCfg, m, 0, 0, 0, nightDate, anchor);
+    expect(b.distanceCharge).toBe(0);
+    expect(b.nightCharge).toBe(0);
+    expect(b.serviceCharge).toBe(0);
+    expect(b.baseFare).toBeCloseTo(300 * 0.9 / 1.08, 1);
+    expect(b.total).toBe(calculateFare(pkg, 7, false, 1, 0, slabCfg, m, 0, 0, 0, nightDate, anchor));
+  });
+});
