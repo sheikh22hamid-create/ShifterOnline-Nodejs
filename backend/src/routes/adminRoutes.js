@@ -216,6 +216,7 @@ router.post("/rate-cards/slabs/sync", auth, authorize("superadmin"), rateCardCon
 router.post("/rate-cards/generate-models", auth, authorize("superadmin"), rateCardController.generateModels);
 router.get("/rate-cards/porter-live", auth, rateCardController.getPorterLive);
 router.put("/rate-cards/porter-live", auth, authorize("superadmin"), rateCardController.updatePorterLive);
+router.post("/rate-cards/porter-live/test", auth, authorize("superadmin"), rateCardController.testPorterLive);
 router.get("/rate-cards/:id", auth, rateCardController.getOne);
 router.post("/rate-cards", auth, authorize("superadmin"), rateCardController.create);
 router.put("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.update);

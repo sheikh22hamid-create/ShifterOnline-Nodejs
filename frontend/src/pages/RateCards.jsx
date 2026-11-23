@@ -9,6 +9,7 @@ import Modal from '../components/common/Modal'
 import RateCardFormModal from '../components/ratecards/RateCardFormModal'
 import SlabPricingModal from '../components/ratecards/SlabPricingModal'
 import GenerateModelsModal from '../components/ratecards/GenerateModelsModal'
+import PorterLivePricingCard from '../components/ratecards/PorterLivePricingCard'
 import { formatCurrency } from '../utils/format'
 
 function getVehicleIcon(catName) {
@@ -184,6 +185,8 @@ export default function RateCards() {
           </div>
         )}
       </div>
+
+      <PorterLivePricingCard categories={categories} />
 
       {/* Category Pills / Tabs */}
       <div className="flex flex-wrap items-center gap-1.5 border-b pb-3" style={{ borderColor: 'var(--border)' }}>

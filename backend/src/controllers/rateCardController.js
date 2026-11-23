@@ -861,7 +861,8 @@ async function generateModels(req, res) {
 async function getPorterLive(req, res) {
   try {
     const config = await porterLiveSettings.getConfig();
-    return res.status(200).json({ success: true, data: { config } });
+    const stats = require("../services/porterQuoteService").getStats();
+    return res.status(200).json({ success: true, data: { config, stats } });
   } catch (err) {
     return internalError(res, err, "rateCards.getPorterLive");
   }
@@ -878,7 +879,51 @@ async function updatePorterLive(req, res) {
   return res.status(200).json({ success: true, message: "Porter live pricing saved", data: { config } });
 }
 
+// Admin test box: Porter-anchored vs rate-card fares per model for a route. Calls getPorterAnchor directly
+// (null when the city is not switched on / Porter is down), then prices every package of the category both ways.
+async function testPorterLive(req, res) {
+  const b = req.body || {};
+  const cityId = Number(b.city_id);
+  const catId = Number(b.cat_id);
+  const coords = [b.plat, b.plong, b.dlat, b.dlong].map((v) => (v === "" || v == null ? NaN : Number(v)));
+  if (!Number.isInteger(catId) || catId <= 0) return res.status(400).json({ success: false, message: "cat_id is required" });
+  if (!Number.isInteger(cityId) || cityId <= 0) return res.status(400).json({ success: false, message: "city_id is required" });
+  if (coords.some((n) => !Number.isFinite(n))) {
+    return res.status(400).json({ success: false, message: "plat, plong, dlat and dlong must be numbers" });
+  }
+  const [plat, plong, dlat, dlong] = coords;
+  try {
+    const pricing = require("../services/pricingEngine");
+    const { getRoadDistanceKm } = require("../utils/geoDistance");
+    const { getPorterAnchor } = require("../services/porterQuoteService");
+    const category = (await prisma.pkg_category.findUnique({ where: { id: catId } }))?.cat_name || null;
+    const [{ distanceKm }, packages, slabPricingConfig, anchor] = await Promise.all([
+      getRoadDistanceKm(plat, plong, dlat, dlong),
+      pricing.getPackagesForCategory(catId),
+      pricing.getSlabPricingConfig(),
+      getPorterAnchor({ cityId, category, pickup: { lat: plat, lng: plong }, drop: { lat: dlat, lng: dlong }, stops: [] }),
+    ]);
+    const slabConfig = await pricing.resolveVehicleSlabConfig(slabPricingConfig.slabRates, catId);
+    const priceAll = (porterAnchor) => packages.map((pkg) => ({
+      title: pkg.user_title || pkg.title,
+      fare: pricing.priceForPackage(pkg, distanceKm, 1, 0, null, slabConfig, slabPricingConfig.modelMultipliers, 0, new Date(), porterAnchor).fare,
+    }));
+    return res.status(200).json({
+      success: true,
+      data: {
+        anchor: anchor || null,
+        distance_km: Math.round(distanceKm * 100) / 100,
+        porter_based: anchor ? priceAll(anchor) : [],
+        rate_card: priceAll(null),
+      },
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.testPorterLive");
+  }
+}
+
 module.exports = {
+  testPorterLive,
   getPorterLive,
   updatePorterLive,
   _validateCompensation: validateCompensation,
