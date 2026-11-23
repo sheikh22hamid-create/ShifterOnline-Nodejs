@@ -10,6 +10,23 @@ const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString() : '-')
 
 const EMPTY_TEST = { city_id: '', cat_id: '', plat: '', plong: '', dlat: '', dlong: '' }
 
+// Porter's web quote runs higher than its in-app price, by a different amount per vehicle. These % cut the
+// web anchor down to the app level. Keyed by Porter vehicle id (matches the backend appAdjustPct map).
+const PORTER_VEHICLES = [
+  { id: 97, label: 'Bike' },
+  { id: 133, label: 'Scooter' },
+  { id: 1139, label: 'Mini 3W' },
+  { id: 126, label: 'E Loader' },
+  { id: 91, label: '3 Wheeler' },
+  { id: 1, label: 'Tata Ace' },
+]
+const adjustFromConfig = (m) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [k, String(v)]))
+const adjustToPayload = (m) => Object.fromEntries(
+  PORTER_VEHICLES
+    .map((v) => [v.id, Number(m?.[v.id])])
+    .filter(([, n]) => Number.isFinite(n) && n > 0),
+)
+
 /**
  * Porter Live Pricing: prices fares off Porter's live quote in switched-on cities. Anyone on the page can read;
  * only a superadmin can save (the server enforces it too).
@@ -21,7 +38,7 @@ export default function PorterLivePricingCard({ categories = [] }) {
   const { user } = useAuth()
   const canEdit = user?.role === 'superadmin'
 
-  const [form, setForm] = useState({ enabled: false, cityIds: [], timeoutMs: '', cacheMinutes: '' })
+  const [form, setForm] = useState({ enabled: false, cityIds: [], timeoutMs: '', cacheMinutes: '', appAdjust: {} })
   const [stats, setStats] = useState(null)
   const [cities, setCities] = useState([])
   const [loaded, setLoaded] = useState(false)
@@ -43,6 +60,7 @@ export default function PorterLivePricingCard({ categories = [] }) {
         cityIds: (c.cityIds || []).map(Number),
         timeoutMs: String(c.timeoutMs ?? ''),
         cacheMinutes: String(c.cacheMinutes ?? ''),
+        appAdjust: adjustFromConfig(c.appAdjustPct),
       })
       setStats(d.stats || null)
       const list = cityRes?.data?.data
@@ -67,9 +85,10 @@ export default function PorterLivePricingCard({ categories = [] }) {
         cityIds: form.cityIds,
         timeoutMs: Number(form.timeoutMs),
         cacheMinutes: Number(form.cacheMinutes),
+        appAdjustPct: adjustToPayload(form.appAdjust),
       })
       const c = res.data?.data?.config || {}
-      setForm({ enabled: !!c.enabled, cityIds: (c.cityIds || []).map(Number), timeoutMs: String(c.timeoutMs ?? ''), cacheMinutes: String(c.cacheMinutes ?? '') })
+      setForm({ enabled: !!c.enabled, cityIds: (c.cityIds || []).map(Number), timeoutMs: String(c.timeoutMs ?? ''), cacheMinutes: String(c.cacheMinutes ?? ''), appAdjust: adjustFromConfig(c.appAdjustPct) })
       toastRef.current.success('Porter live pricing saved')
     } catch (err) {
       toastRef.current.error(errMsg(err, 'Could not save'))
@@ -141,6 +160,27 @@ export default function PorterLivePricingCard({ categories = [] }) {
           <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="pl_cache">Quote cache (minutes)</label>
           <input id="pl_cache" type="number" min="1" max="60" step="1" value={form.cacheMinutes} onChange={(e) => setForm((f) => ({ ...f, cacheMinutes: e.target.value }))} disabled={disabled} className={inputClass} style={inputStyle} />
           <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>1 to 60 minutes</p>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>App adjustment (% below Porter web)</p>
+        <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+          Porter's web quote is higher than its in-app price. This % cuts the Model 3 anchor down per vehicle. Blank or 0 = no cut.
+        </p>
+        <div className="mt-1 grid gap-2 sm:grid-cols-3">
+          {PORTER_VEHICLES.map((v) => (
+            <label key={v.id} className="text-[12px]" style={{ color: 'var(--ink)' }}>
+              {v.label}
+              <input
+                type="number" min="0" max="90" step="0.5" inputMode="decimal"
+                value={form.appAdjust[v.id] ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, appAdjust: { ...f.appAdjust, [v.id]: e.target.value } }))}
+                disabled={disabled}
+                className={inputClass} style={inputStyle} aria-label={`${v.label} app adjustment percent`}
+              />
+            </label>
+          ))}
         </div>
       </div>
 

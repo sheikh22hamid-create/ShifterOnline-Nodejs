@@ -11,14 +11,14 @@ beforeEach(() => {
 const row = (v) => ({ setting_key: "porter_live_pricing", setting_value: typeof v === "string" ? v : JSON.stringify(v) });
 
 describe("getConfig", () => {
-  const DEFAULTS = { enabled: false, cityIds: [], timeoutMs: 3000, cacheMinutes: 10 };
+  const DEFAULTS = { enabled: false, cityIds: [], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: {} };
   it("defaults when no row", async () => {
     prisma.app_settings.findFirst.mockResolvedValue(null);
     expect(await settings.getConfig()).toEqual(DEFAULTS);
   });
   it("reads values and clamps timeout/cache", async () => {
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], timeout_ms: 99999, cache_minutes: 500 }));
-    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 4000, cacheMinutes: 60 });
+    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 4000, cacheMinutes: 60, appAdjustPct: {} });
     settings._resetCacheForTests();
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], timeout_ms: 100, cache_minutes: 0 }));
     expect(await settings.getConfig()).toMatchObject({ timeoutMs: 500, cacheMinutes: 1 });
@@ -60,11 +60,11 @@ describe("saveConfig", () => {
   it("upserts snake_case JSON", async () => {
     prisma.app_settings.upsert.mockResolvedValue({});
     const cfg = await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
-    expect(cfg).toEqual({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+    expect(cfg).toEqual({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: {} });
     expect(prisma.app_settings.upsert).toHaveBeenCalledTimes(1);
     const arg = prisma.app_settings.upsert.mock.calls[0][0];
     expect(arg.where).toEqual({ setting_key: "porter_live_pricing" });
-    expect(JSON.parse(arg.create.setting_value)).toEqual({ enabled: true, city_ids: [7], timeout_ms: 3000, cache_minutes: 10 });
+    expect(JSON.parse(arg.create.setting_value)).toEqual({ enabled: true, city_ids: [7], timeout_ms: 3000, cache_minutes: 10, app_adjust_pct: {} });
   });
 });
 
@@ -93,7 +93,7 @@ describe("getConfig cache", () => {
     const a = await settings.getConfig();
     a.cityIds.push(99);
     a.enabled = false;
-    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: {} });
   });
   it("saveConfig invalidates the cache", async () => {
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: false, city_ids: [] }));
@@ -103,5 +103,45 @@ describe("getConfig cache", () => {
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7] }));
     expect((await settings.getConfig()).enabled).toBe(true);
     expect(prisma.app_settings.findFirst).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("appAdjustPct", () => {
+  it("getConfig parses app_adjust_pct and drops invalid entries", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(
+      row({ enabled: true, city_ids: [7], app_adjust_pct: { 91: 20, 1: 28.5, 126: "7", 0: 5, "-3": 10, 97: 999, 133: "x" } }),
+    );
+    const cfg = await settings.getConfig();
+    // keeps valid positive ids with 0..90 percent (rounded to 2dp); drops id<=0, >90, and non-numeric
+    expect(cfg.appAdjustPct).toEqual({ 91: 20, 1: 28.5, 126: 7 });
+  });
+  it("getConfig returns empty map when app_adjust_pct absent", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7] }));
+    expect((await settings.getConfig()).appAdjustPct).toEqual({});
+  });
+  it("saveConfig persists app_adjust_pct and echoes it back", async () => {
+    prisma.app_settings.upsert.mockResolvedValue({});
+    const cfg = await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: { 91: 20, 1: 28 } });
+    expect(cfg.appAdjustPct).toEqual({ 91: 20, 1: 28 });
+    const arg = prisma.app_settings.upsert.mock.calls[0][0];
+    expect(JSON.parse(arg.create.setting_value).app_adjust_pct).toEqual({ 91: 20, 1: 28 });
+  });
+  it("saveConfig defaults app_adjust_pct to empty when omitted", async () => {
+    prisma.app_settings.upsert.mockResolvedValue({});
+    const cfg = await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+    expect(cfg.appAdjustPct).toEqual({});
+  });
+  it("saveConfig rejects a percent above 90 or below 0 without writing", async () => {
+    await expect(settings.saveConfig({ enabled: true, cityIds: [1], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: { 91: 91 } })).rejects.toThrow(/90/);
+    await expect(settings.saveConfig({ enabled: true, cityIds: [1], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: { 91: -1 } })).rejects.toThrow();
+    await expect(settings.saveConfig({ enabled: true, cityIds: [1], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: [20] })).rejects.toThrow();
+    expect(prisma.app_settings.upsert).not.toHaveBeenCalled();
+  });
+  it("getConfig returns a deep copy of appAdjustPct, so callers cannot mutate the cache", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], app_adjust_pct: { 91: 20 } }));
+    const a = await settings.getConfig();
+    a.appAdjustPct[91] = 99;
+    a.appAdjustPct[1] = 50;
+    expect((await settings.getConfig()).appAdjustPct).toEqual({ 91: 20 });
   });
 });

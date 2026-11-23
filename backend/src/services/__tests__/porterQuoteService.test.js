@@ -289,3 +289,31 @@ describe("anchorForNewRoute", () => {
     expect(a.fare).toBe(33.33);
   });
 });
+
+describe("getPorterAnchor appAdjustPct", () => {
+  const cfg = (over = {}) => ({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: {}, ...over });
+  test("cuts the fare by the configured percent for that vehicle (3 Wheeler id 91)", async () => {
+    settings.getConfig.mockResolvedValue(cfg({ appAdjustPct: { 91: 20 } }));
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 300 }]));
+    const a = await svc.getPorterAnchor(args(), { fetchImpl: f });
+    expect(a.fare).toBe(240); // 300 * (1 - 0.20)
+    expect(a.porter_vehicle_id).toBe(91);
+  });
+  test("rounds the adjusted fare to 2 decimals", async () => {
+    settings.getConfig.mockResolvedValue(cfg({ appAdjustPct: { 91: 28 } }));
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 331 }]));
+    const a = await svc.getPorterAnchor(args(), { fetchImpl: f });
+    expect(a.fare).toBe(238.32); // 331 * 0.72 = 238.32
+  });
+  test("no adjustment for a vehicle not in the map", async () => {
+    settings.getConfig.mockResolvedValue(cfg({ appAdjustPct: { 1: 28 } }));
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 300 }]));
+    const a = await svc.getPorterAnchor(args(), { fetchImpl: f });
+    expect(a.fare).toBe(300);
+  });
+  test("zero percent leaves the fare unchanged", async () => {
+    settings.getConfig.mockResolvedValue(cfg({ appAdjustPct: { 91: 0 } }));
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 300 }]));
+    expect((await svc.getPorterAnchor(args(), { fetchImpl: f })).fare).toBe(300);
+  });
+});

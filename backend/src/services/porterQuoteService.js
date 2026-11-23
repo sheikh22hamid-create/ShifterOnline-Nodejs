@@ -129,9 +129,14 @@ async function getPorterAnchor({ cityId, category, pickup, drop, stops = [] } = 
     const q = entry.quotes.find((x) => Number(x.porter_vehicle_id) === vehicleId);
     const fare = Number(q?.fare);
     if (!q || !Number.isFinite(fare) || fare <= 0) return null;
+    // Porter's web quote sits above its in-app price; cut it by this vehicle's configured percent so the
+    // stored anchor (and therefore Model 3) lands near what the Porter app shows. 0 / unset -> no change.
+    const adjustPct = Number(cfg.appAdjustPct?.[vehicleId]);
+    const adjustedFare = Number.isFinite(adjustPct) && adjustPct > 0 ? Math.round(fare * (1 - adjustPct / 100) * 100) / 100 : fare;
+    if (!(adjustedFare > 0)) return null;
     const km = entry.porter_distance_km === null || entry.porter_distance_km === undefined || entry.porter_distance_km === "" ? NaN : Number(entry.porter_distance_km);
     return {
-      fare,
+      fare: adjustedFare,
       porter_distance_km: Number.isFinite(km) ? km : null,
       porter_vehicle_id: vehicleId,
       quoted_at: typeof entry.quoted_at === "string" ? entry.quoted_at : null,
