@@ -600,6 +600,39 @@ async function sendAdminMessage({
     messageType = "template";
     storedBody = text || foundTpl?.message || `[Template: ${metaTemplateName}]`;
 
+    // Smart default parameters for parameterized templates when sent from Live Chat UI
+    if (metaTemplateName === "shifter_driver_unavailable" && (!components || components.length === 0)) {
+      const recipientName = rawThread?.contact_name || "Customer";
+      components = [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: recipientName },
+            { type: "text", text: "Recent" }
+          ]
+        }
+      ];
+    } else if (metaTemplateName === "shifter_partner_app_invite" && (!components || components.length === 0)) {
+      const recipientName = rawThread?.contact_name || "Driver Partner";
+      components = [
+        {
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: { link: "https://shifteronline.com/logo.png" }
+            }
+          ]
+        },
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: recipientName }
+          ]
+        }
+      ];
+    }
+
     try {
       metaResponse = await cloudApi.sendTemplateMessage(
         normalized,

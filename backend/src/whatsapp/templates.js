@@ -9,6 +9,18 @@ const HELPLINE_NUMBER = "+91 9109114515";
 
 const WHATSAPP_TEMPLATES = [
   {
+    id: "shifter_driver_unavailable",
+    name: "shifter_driver_unavailable",
+    metaTemplateName: "shifter_driver_unavailable",
+    isMetaApproved: true,
+    title: "⚠️ Driver Unavailable Apology (Order Not Assigned)",
+    category: "customer",
+    categoryLabel: "Customer Care",
+    description: "Official Meta-approved apology message sent when no driver partner could be assigned for an order.",
+    message:
+      "Namaste {{1}} ji,\n\nHumein behad khed hai ki aapke Order #{{2}} ke samay aapke pickup location par koi driver partner available nahi ho saka, jis karan aapki booking arrange nahi ho paayi.\n\n\"We sincerely apologize that we were unable to arrange a driver partner for your booking at that time.\"\n\nAapki suvidha hamare liye sarvopari hai. Hamari team lagatar aapke area me naye driver partners jod rahi hai taaki aage aapko aisi pareshani ka samna na karna pade.\n\nAgar aapko abhi bhi gaadi ki aavashyakta hai to aap dubara book kar sakte hain ya kisi bhi sahayata ke liye hamare support se sampark karein.\n\nShifter Online par vishwas jatane ke liye dhanyawad.\n\n— Team Shifter Online",
+  },
+  {
     id: "shifter_customer_welcome",
     name: "shifter_customer_welcome",
     metaTemplateName: "shifter_customer_welcome",
