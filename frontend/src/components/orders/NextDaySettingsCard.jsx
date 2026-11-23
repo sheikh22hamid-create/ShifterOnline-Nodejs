@@ -23,7 +23,7 @@ export default function NextDaySettingsCard() {
   const toastRef = useRef(toast)
   useEffect(() => { toastRef.current = toast })
   const { user } = useAuth()
-  const canEdit = user?.role === 'superadmin'
+  const canEdit = user?.role === 'superadmin' || user?.role === 'admin'
 
   const [form, setForm] = useState(EMPTY)
   const [loaded, setLoaded] = useState(false)
@@ -95,7 +95,7 @@ export default function NextDaySettingsCard() {
           {saving ? 'Saving…' : 'Save'}
         </button>
       ) : (
-        <p className="mt-3 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>Only a superadmin can change these.</p>
+        <p className="mt-3 text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>Only admins can change these.</p>
       )}
     </div>
   )

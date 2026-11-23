@@ -471,6 +471,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (!mounted) return;
     setState(() { _route = points; _loadingRoute = false; });
     if (points.length > 1) _fitRoute(points);
+    _refreshAvailability();
   }
 
   double _fallbackDistanceKm() {
@@ -524,10 +525,25 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     List<Map<String, dynamic>> availabilityRows,
     Map<String, dynamic> payload,
   ) {
-    final categories = <Map<String, dynamic>>[
+    final rawCategories = <Map<String, dynamic>>[
       ..._mapList(payload['categories']),
       ..._mapList(payload['vehicle_categories']),
     ];
+
+    // Dynamic distance filtering: only include vehicles where trip distance <= category max_distance
+    final categories = rawCategories.where((category) {
+      if (_distanceKm != null && _distanceKm! > 0) {
+        final rawMax = category['max_distance'] ?? category['max_distance_km'];
+        if (rawMax != null) {
+          final maxDist = double.tryParse(rawMax.toString());
+          if (maxDist != null && maxDist > 0 && _distanceKm! > maxDist) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }).toList();
+
     final options = <Map<String, dynamic>>[];
     final seen = <String>{};
 
@@ -538,6 +554,15 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         Map<String, dynamic>? availableMatch;
         Map<String, dynamic>? anyMatch;
         for (final row in availabilityRows) {
+          if (_distanceKm != null && _distanceKm! > 0) {
+            final rawMax = row['max_distance'] ?? row['max_distance_km'];
+            if (rawMax != null) {
+              final maxDist = double.tryParse(rawMax.toString());
+              if (maxDist != null && maxDist > 0 && _distanceKm! > maxDist) {
+                continue;
+              }
+            }
+          }
           final rowId = _responseCategoryId(row);
           final rowName = _responseCategoryName(row).toLowerCase();
           if ((categoryId.isNotEmpty && rowId == categoryId) ||
@@ -599,6 +624,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final body = <String, dynamic>{
         'pickup_lat': _pickup.latitude,
         'pickup_lng': _pickup.longitude,
+        'drop_lat': _drop.latitude,
+        'drop_lng': _drop.longitude,
+        if (_distanceKm != null && _distanceKm! > 0) 'distance_km': _distanceKm,
         'radius_km': _selectedRadiusKm,
         // Scheduled (2) and next-day (3) orders dispatch later, so every
         // vehicle must stay selectable even with no driver online right now.
@@ -652,7 +680,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _vehicles = refreshed;
         _availabilityError = decoded['serviceable'] == true || refreshed.any((v) => _isAvailable(v['availability']))
             ? null
-            : "No drivers available near your pickup location right now.";
+            : (_distanceKm != null && _distanceKm! > 0 && refreshed.isEmpty)
+                ? "No vehicle available for this trip distance (${_distanceKm!.toStringAsFixed(1)} KM). Please choose a shorter route or different locations."
+                : "No drivers available near your pickup location right now.";
         _selectedIndex = retainedIndex >= 0 ? retainedIndex : -1;
         _selectedModelIndex = null;
         _vehicleDetailNotes = notes;

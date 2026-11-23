@@ -1,5 +1,8 @@
+const fs = require("fs");
+const path = require("path");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
+const cloudinaryStorage = require("../utils/cloudinaryStorage");
 const { trackLine, trackUrl } = require("../services/receiverTrackMessage");
 const senderPayService = require("../services/senderPayService");
 
@@ -29,9 +32,14 @@ function normalizePhone10(phone) {
 }
 
 /**
- * Sends outbound automated WhatsApp message to a 10-digit phone number
+ * Sends outbound automated WhatsApp message to a 10-digit phone number.
+ * Supports text, image, and video attachments with captions.
+ *
+ * @param {string|number} phoneNumber 10-digit mobile number
+ * @param {string} [messageText] Optional text message or caption
+ * @param {object} [options] Optional media attachment { mediaUrl, mediaType, relativePath }
  */
-async function sendWhatsAppNotification(phoneNumber, messageText) {
+async function sendWhatsAppNotification(phoneNumber, messageText, options = {}) {
   if (!whatsappClientRef) {
     logger.warn(`WhatsApp client not ready. Notification omitted for ${phoneNumber}`);
     return false;
@@ -58,11 +66,54 @@ async function sendWhatsAppNotification(phoneNumber, messageText) {
       }
     }
 
-    if (whatsappClientRef.sendMessage) {
-      await whatsappClientRef.sendMessage(targetJid, { text: messageText });
-      logger.info(`✅ Outbound WhatsApp notification successfully sent to ${targetJid}`);
-      return true;
+    if (!whatsappClientRef.sendMessage) {
+      return false;
     }
+
+    const { mediaUrl, mediaType, relativePath } = options || {};
+    let messagePayload;
+
+    if (mediaUrl) {
+      // Resolve media source (Buffer for local disk, URL for remote)
+      let mediaSource = null;
+
+      const localRelPath = relativePath || (!mediaUrl.startsWith("http") ? mediaUrl.replace(/^\//, "") : null);
+      if (localRelPath) {
+        const absPath = path.join(__dirname, "..", "..", "public", localRelPath);
+        if (fs.existsSync(absPath)) {
+          mediaSource = fs.readFileSync(absPath);
+        }
+      }
+
+      if (!mediaSource) {
+        let fullUrl = mediaUrl;
+        if (!mediaUrl.startsWith("http://") && !mediaUrl.startsWith("https://")) {
+          const cUrl = cloudinaryStorage.urlForRelativePath(localRelPath || mediaUrl);
+          if (cUrl) {
+            fullUrl = cUrl;
+          } else {
+            const base = process.env.PUBLIC_BASE_URL || "http://localhost:5002";
+            fullUrl = `${base.replace(/\/$/, "")}/${mediaUrl.replace(/^\//, "")}`;
+          }
+        }
+        mediaSource = { url: fullUrl };
+      }
+
+      const caption = messageText && messageText.trim() ? messageText.trim() : undefined;
+
+      if (mediaType === "video") {
+        messagePayload = { video: mediaSource, caption, mimetype: "video/mp4" };
+      } else {
+        // default to image
+        messagePayload = { image: mediaSource, caption };
+      }
+    } else {
+      messagePayload = { text: messageText || "" };
+    }
+
+    await whatsappClientRef.sendMessage(targetJid, messagePayload);
+    logger.info(`✅ Outbound WhatsApp notification successfully sent to ${targetJid}`);
+    return true;
   } catch (err) {
     logger.error(`❌ Failed to send WhatsApp notification to ${phoneNumber}:`, err);
     return false;

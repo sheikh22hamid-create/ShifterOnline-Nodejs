@@ -185,6 +185,18 @@ async function assignRiderToOrder({ order, riderId, actor, isRiderForbidden, rem
     };
     io.to(`driver_${riderId}`).emit("order:assigned", directPayload);
     dispatchManager.emitDirectAssign(riderId, updatedOrder);
+
+    // If driver is a Trial Driver, dispatch WhatsApp pickup navigation & buttons
+    if (rider && rider.trial_status && rider.trial_status !== "none") {
+      try {
+        const trialDriverCloudFlow = require("../whatsapp/trialDriverCloudFlow");
+        trialDriverCloudFlow.sendPickupPrompt(rider.fmobile || rider.mobile, updatedOrder).catch((waErr) => {
+          logger.error(`Failed to send WhatsApp prompt to trial driver ${riderId}:`, waErr);
+        });
+      } catch (waReqErr) {
+        logger.error(`Error requiring trialDriverCloudFlow:`, waReqErr);
+      }
+    }
     io.to(`customer_${updatedOrder.uid}`).emit("order:assigned", {
       order_id: updatedOrder.id,
       rider_id: rider.id,

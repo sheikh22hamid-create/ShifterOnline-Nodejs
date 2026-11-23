@@ -65,10 +65,13 @@ function splitPath(relativePath) {
 }
 
 const IMAGE_FORMATS = new Set(["jpg", "jpeg", "png", "webp", "gif", "avif", "heic"]);
+const VIDEO_FORMATS = new Set(["mp4", "3gp", "mov", "mkv", "webm", "avi"]);
 // PDFs (e.g. a UPI screenshot saved as PDF) go up as "raw" so Cloudinary
 // stores the exact bytes instead of trying to rasterize them as an image.
 function resourceTypeFor(format) {
-  return IMAGE_FORMATS.has(format) ? "image" : "raw";
+  if (IMAGE_FORMATS.has(format)) return "image";
+  if (VIDEO_FORMATS.has(format)) return "video";
+  return "raw";
 }
 
 /**
@@ -82,7 +85,12 @@ async function uploadBuffer(buffer, relativePath) {
   if (ensureConfigured()) {
     const { publicId, format } = splitPath(relativePath);
     const resourceType = resourceTypeFor(format);
-    const mime = resourceType === "image" ? `image/${format || "jpeg"}` : "application/octet-stream";
+    const mime =
+      resourceType === "image"
+        ? `image/${format || "jpeg"}`
+        : resourceType === "video"
+        ? `video/${format || "mp4"}`
+        : "application/octet-stream";
     await cloudinary.uploader.upload(`data:${mime};base64,${buffer.toString("base64")}`, {
       public_id: withPrefix(publicId),
       format: format || undefined,

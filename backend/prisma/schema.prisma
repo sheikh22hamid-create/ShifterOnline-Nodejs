@@ -235,6 +235,7 @@ model pkg_category {
   cat_name     String   @db.Text
   city_id      Int?
   sort_order   Int?
+  max_distance Decimal? @db.Decimal(10, 2)
   max_load_kg  Decimal? @db.Decimal(10, 2)
   dim_length   Decimal? @db.Decimal(10, 2)
   dim_width    Decimal? @db.Decimal(10, 2)

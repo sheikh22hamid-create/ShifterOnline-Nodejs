@@ -150,7 +150,23 @@ export default function CustomerDetailDrawer({ customerId, onClose, onChanged })
                 Profile
               </h3>
               <div className="surface-card grid grid-cols-2 gap-3 rounded-xl p-3.5">
-                <Field label="Mobile" value={<span className="font-mono-data">{customer.mobile}</span>} />
+                <Field
+                  label="Mobile"
+                  value={
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono-data">{customer.mobile}</span>
+                      {customer.mobile && (
+                        <a
+                          href={`/whatsapp/chat?phone=${customer.mobile}`}
+                          className="flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+                          title="Open WhatsApp Live Chat"
+                        >
+                          💬 WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  }
+                />
                 <Field label="Email" value={customer.email} />
                 <Field label="Wallet" value={<span className="font-mono-data">{formatCurrency(walletData?.wallet ?? customer.wallet)}</span>} />
                 <Field label="Plan" value={customer.plan_type} />

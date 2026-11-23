@@ -61,7 +61,7 @@ function Stat({ label, value, sub }) {
 export default function DriverPerformance() {
   const toast = useToast()
   const { user } = useAuth()
-  const isSuper = user?.role === 'superadmin'
+  const isSuper = user?.role === 'superadmin' || user?.role === 'admin'
   const canWaive = user?.role === 'superadmin' || user?.role === 'admin'
 
   const [tier, setTier] = useState('')

@@ -1,9 +1,16 @@
 const express = require("express");
 const router = express.Router();
+const crypto = require("crypto");
+const path = require("path");
+const multer = require("multer");
 const whatsappClient = require("../whatsapp/client");
 const notifications = require("../whatsapp/notifications");
 const customerHandler = require("../whatsapp/handlers/customerHandler");
+const trialDriverCloudFlow = require("../whatsapp/trialDriverCloudFlow");
 const { WHATSAPP_TEMPLATES } = require("../whatsapp/templates");
+const templateService = require("../services/whatsappTemplateService");
+const chatService = require("../services/whatsappChatService");
+const { uploadBuffer, urlForRelativePath } = require("../utils/cloudinaryStorage");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
 const rateLimiter = require("../middleware/rateLimiter");
@@ -159,20 +166,153 @@ router.post(
 
 /**
  * GET /api/v1/whatsapp/templates
- * Returns pre-built marketing, onboarding, and reminder WhatsApp templates.
+ * Returns pre-built marketing, onboarding, and reminder WhatsApp templates,
+ * merged with any permanently saved customizations from the database.
  * Requires Authentication + Super Admin / Admin / Executive.
  */
-router.get("/templates", auth, authorize("superadmin", "admin", "executive"), (req, res) => {
-  return res.json({
-    Result: true,
-    success: true,
-    data: WHATSAPP_TEMPLATES,
-  });
+router.get("/templates", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const data = await templateService.getAllTemplates();
+    return res.json({
+      Result: true,
+      success: true,
+      data,
+    });
+  } catch (err) {
+    logger.error("Error fetching WhatsApp templates:", err);
+    return res.status(500).json({ Result: false, success: false, msg: "Failed to fetch WhatsApp templates" });
+  }
 });
 
 /**
+ * PUT /api/v1/whatsapp/templates/:id
+ * Permanently saves customized message text and optional media attachment for a template in the database.
+ * Requires Authentication + Super Admin / Admin.
+ */
+router.put("/templates/:id", auth, authorize("superadmin", "admin"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message, media_url, media_type, media_filename } = req.body;
+
+    const updated = await templateService.saveTemplate(
+      id,
+      { message, media_url, media_type, media_filename },
+      req.user
+    );
+
+    return res.json({
+      Result: true,
+      success: true,
+      msg: "Template saved permanently",
+      data: updated,
+    });
+  } catch (err) {
+    logger.error(`Error saving WhatsApp template ${req.params?.id}:`, err);
+    return res.status(400).json({ Result: false, success: false, msg: err.message || "Failed to save template" });
+  }
+});
+
+/**
+ * POST /api/v1/whatsapp/templates/:id/reset
+ * Resets a template's content back to the factory pre-made default in the database.
+ * Requires Authentication + Super Admin / Admin.
+ */
+router.post("/templates/:id/reset", auth, authorize("superadmin", "admin"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const reset = await templateService.resetTemplate(id);
+
+    return res.json({
+      Result: true,
+      success: true,
+      msg: "Template reset to original default",
+      data: reset,
+    });
+  } catch (err) {
+    logger.error(`Error resetting WhatsApp template ${req.params?.id}:`, err);
+    return res.status(400).json({ Result: false, success: false, msg: err.message || "Failed to reset template" });
+  }
+});
+
+/**
+ * Supported media formats for WhatsApp Broadcast
+ */
+const ALLOWED_MEDIA_EXT = [".jpg", ".jpeg", ".png", ".webp", ".mp4", ".3gp", ".mov"];
+const broadcastMediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 16 * 1024 * 1024 }, // 16 MB max
+}).single("media");
+
+/**
+ * POST /api/v1/whatsapp/upload-media
+ * Uploads an image or video for broadcast attachment or permanent template attachment.
+ * Supports JPG, PNG, WEBP (up to 10MB) and MP4, 3GP, MOV (up to 16MB).
+ * Requires Authentication + Super Admin / Admin / Executive.
+ */
+router.post(
+  "/upload-media",
+  auth,
+  authorize("superadmin", "admin", "executive"),
+  (req, res) => {
+    broadcastMediaUpload(req, res, async (err) => {
+      if (err) {
+        logger.error("WhatsApp media upload multer error:", err);
+        return res.status(400).json({ Result: false, success: false, msg: err.message || "Media upload error" });
+      }
+      if (!req.file) {
+        return res.status(400).json({ Result: false, success: false, msg: "No media file provided (field name must be 'media')" });
+      }
+
+      const ext = path.extname(req.file.originalname || "").toLowerCase();
+      if (!ALLOWED_MEDIA_EXT.includes(ext)) {
+        return res.status(400).json({
+          Result: false,
+          success: false,
+          msg: `Unsupported format '${ext}'. Allowed: Images (JPG, PNG, WEBP) up to 10MB, Videos (MP4, 3GP, MOV) up to 16MB.`,
+        });
+      }
+
+      const isVideo = [".mp4", ".3gp", ".mov"].includes(ext);
+      const mediaType = isVideo ? "video" : "image";
+
+      if (!isVideo && req.file.size > 10 * 1024 * 1024) {
+        return res.status(400).json({ Result: false, success: false, msg: "Image file exceeds 10 MB limit." });
+      }
+
+      try {
+        const subfolder = isVideo ? "videos/broadcast" : "images/broadcast";
+        const filename = `${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext}`;
+        const relativePath = await uploadBuffer(req.file.buffer, `${subfolder}/${filename}`);
+
+        let deliveryUrl = urlForRelativePath(relativePath);
+        if (!deliveryUrl) {
+          const base = process.env.PUBLIC_BASE_URL || "http://localhost:5002";
+          deliveryUrl = `${base.replace(/\/$/, "")}/${relativePath.replace(/^\//, "")}`;
+        }
+
+        return res.json({
+          Result: true,
+          success: true,
+          msg: "Media uploaded successfully",
+          data: {
+            url: deliveryUrl,
+            relativePath,
+            mediaType,
+            originalName: req.file.originalname,
+            size: req.file.size,
+          },
+        });
+      } catch (uploadErr) {
+        logger.error("WhatsApp uploadMedia failed:", uploadErr);
+        return res.status(500).json({ Result: false, success: false, msg: uploadErr.message || "Failed to upload media" });
+      }
+    });
+  }
+);
+
+/**
  * POST /api/v1/whatsapp/send-broadcast
- * Send single or bulk WhatsApp outreach messages with anti-ban pacing delays.
+ * Send single or bulk WhatsApp outreach messages with optional media attachments and anti-ban pacing delays.
  * Requires Authentication + Super Admin / Admin / Executive.
  */
 router.post(
@@ -182,15 +322,19 @@ router.post(
   rateLimiter({ windowMs: 60 * 1000, max: 15, message: "Broadcast rate limit reached. Please wait a minute." }),
   async (req, res) => {
     try {
-      const { recipients, message, campaignName } = req.body;
+      const { recipients, message, campaignName, mediaUrl, mediaType } = req.body;
 
-      if (!message || typeof message !== "string" || !message.trim()) {
-        return res.status(400).json({ Result: false, success: false, msg: "Message text is required" });
+      const cleanMessage = typeof message === "string" ? message.trim() : "";
+      if (!cleanMessage && !mediaUrl) {
+        return res.status(400).json({ Result: false, success: false, msg: "Message text or media attachment is required" });
       }
 
-      const cleanMessage = message.trim();
       if (cleanMessage.length > 2000) {
         return res.status(400).json({ Result: false, success: false, msg: "Message exceeds maximum 2000 characters" });
+      }
+
+      if (mediaUrl && !["image", "video"].includes(mediaType)) {
+        return res.status(400).json({ Result: false, success: false, msg: "mediaType must be 'image' or 'video' when mediaUrl is attached" });
       }
 
       // Parse and normalize phone list
@@ -231,7 +375,7 @@ router.post(
       }
 
       logger.info(
-        `[AUDIT] WhatsApp broadcast started by ${req.user.username} (${req.user.id}, role: ${req.user.role}). Total: ${uniqueNumbers.length} recipients. Campaign: ${campaignName || "General"}`
+        `[AUDIT] WhatsApp broadcast started by ${req.user.username} (${req.user.id}, role: ${req.user.role}). Total: ${uniqueNumbers.length} recipients. Campaign: ${campaignName || "General"}. Media: ${mediaType || "none"}`
       );
 
       const results = [];
@@ -241,7 +385,7 @@ router.post(
       for (let i = 0; i < uniqueNumbers.length; i++) {
         const phone = uniqueNumbers[i];
         try {
-          const sent = await notifications.sendWhatsAppNotification(phone, cleanMessage);
+          const sent = await notifications.sendWhatsAppNotification(phone, cleanMessage, { mediaUrl, mediaType });
           if (sent) {
             sentCount++;
             results.push({ phone, status: "sent" });
@@ -389,16 +533,88 @@ router.get("/webhook", (req, res) => {
 
 /**
  * POST /api/v1/whatsapp/webhook
- * Receives incoming messages and interactive button clicks from WhatsApp Cloud API.
+ * Receives incoming messages, delivery receipts, and interactive button clicks from WhatsApp Cloud API.
  */
 router.post("/webhook", (req, res) => {
   try {
     const body = req.body;
     logger.info(`WhatsApp Cloud webhook received: ${JSON.stringify(body)}`);
-    return res.status(200).send("EVENT_RECEIVED");
+
+    // Acknowledge Meta immediately with 200 OK to prevent retries
+    res.status(200).send("EVENT_RECEIVED");
+
+    // 1. Record in Live Chat Inbox & update threads
+    chatService.processWebhookPayload(body).catch((err) => {
+      logger.error("Error processing WhatsApp webhook in chatService:", err);
+    });
+
+    // 2. Process trial driver flow asynchronously
+    trialDriverCloudFlow.handleIncomingMessage(body).catch((err) => {
+      logger.error("Error handling WhatsApp incoming message in trial flow:", err);
+    });
   } catch (err) {
     logger.error("Error processing WhatsApp webhook payload:", err);
     return res.sendStatus(500);
+  }
+});
+
+/**
+ * GET /api/v1/whatsapp/chat/threads
+ * List conversation threads with 24-hr session window state and unread count.
+ */
+router.get("/chat/threads", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const { search, type, limit, offset } = req.query;
+    const threads = await chatService.getThreads({ search, type, limit, offset });
+    return res.json({ success: true, Result: true, data: threads });
+  } catch (err) {
+    logger.error("GET /chat/threads failed:", err);
+    return res.status(500).json({ success: false, message: "Failed to load chat threads" });
+  }
+});
+
+/**
+ * GET /api/v1/whatsapp/chat/threads/:phone/messages
+ * Get conversation message history for a phone number.
+ */
+router.get("/chat/threads/:phone/messages", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const phone = req.params.phone;
+    const { limit, offset } = req.query;
+    const result = await chatService.getMessagesByPhone(phone, { limit, offset });
+    return res.json({ success: true, Result: true, data: result });
+  } catch (err) {
+    logger.error(`GET /chat/threads/${req.params.phone}/messages failed:`, err);
+    return res.status(500).json({ success: false, message: "Failed to load messages" });
+  }
+});
+
+/**
+ * POST /api/v1/whatsapp/chat/send
+ * Admin sends a message (free-text within 24h, or template message).
+ */
+router.post("/chat/send", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const { phone, text, mediaUrl, mediaType, isTemplate, templateName, components } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: "phone is required" });
+    }
+
+    const message = await chatService.sendAdminMessage({
+      phone,
+      text,
+      mediaUrl,
+      mediaType,
+      isTemplate: Boolean(isTemplate),
+      templateName,
+      components,
+      adminUser: req.user,
+    });
+
+    return res.json({ success: true, Result: true, data: message });
+  } catch (err) {
+    logger.error("POST /chat/send failed:", err);
+    return res.status(400).json({ success: false, message: err.message || "Failed to send message" });
   }
 });
 

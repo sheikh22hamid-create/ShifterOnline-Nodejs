@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
+const { CUSTOMER_REFERRAL_MESSAGE, DRIVER_REFERRAL_MESSAGE } = require("../constants/referralMessages");
 
 // Node port of cust_api/profile.php, pro_image.php, address_list.php,
 // address_user.php. Same { Result, ResponseCode, ResponseMsg } shape as the
@@ -281,7 +282,8 @@ async function profileOverview(req, res) {
     // 6. Referral info
     const referralSetting = await prisma.tbl_referral_setting.findFirst();
     const referralCode = user.referral_code || user.refferal_code || "";
-    const referralMsg = referralSetting?.share_message || "Hey! Use my referral code to sign up on Shifter Online and earn rewards!";
+    const customerShareMsg = referralSetting?.share_message || CUSTOMER_REFERRAL_MESSAGE;
+    const driverShareMsg = DRIVER_REFERRAL_MESSAGE;
 
     return res.status(200).json({
       ResponseCode: "200",
@@ -326,7 +328,9 @@ async function profileOverview(req, res) {
         },
         referral: {
           code: referralCode,
-          share_message: referralMsg,
+          share_message: customerShareMsg,
+          customer_share_message: customerShareMsg,
+          driver_share_message: driverShareMsg,
         },
       },
     });

@@ -36,7 +36,7 @@ const inputStyle = { background: 'var(--bg)', borderColor: 'var(--border)', colo
 export default function TieredDispatch() {
   const toast = useToast()
   const { user } = useAuth()
-  const isSuperadmin = user?.role === 'superadmin'
+  const isSuperadmin = user?.role === 'superadmin' || user?.role === 'admin'
 
   const [activeTab, setActiveTab] = useState('cancels')
 
@@ -190,7 +190,7 @@ export default function TieredDispatch() {
   async function handleSaveSettings(e) {
     e.preventDefault()
     if (!isSuperadmin) {
-      toast.error('Only superadmin can modify dispatch settings')
+      toast.error('Only superadmin/admin can modify dispatch settings')
       return
     }
     setSettingsSaving(true)

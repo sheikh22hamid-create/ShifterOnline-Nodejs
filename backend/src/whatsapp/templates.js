@@ -9,7 +9,82 @@ const HELPLINE_NUMBER = "+91 9109114515";
 
 const WHATSAPP_TEMPLATES = [
   {
+    id: "shifter_driver_unavailable",
+    name: "shifter_driver_unavailable",
+    metaTemplateName: "shifter_driver_unavailable",
+    isMetaApproved: true,
+    title: "⚠️ Driver Unavailable Apology (Order Not Assigned)",
+    category: "customer",
+    categoryLabel: "Customer Care",
+    description: "Official Meta-approved apology message sent when no driver partner could be assigned for an order.",
+    message:
+      "Namaste {{1}} ji,\n\nHumein behad khed hai ki aapke Order #{{2}} ke samay aapke pickup location par koi driver partner available nahi ho saka, jis karan aapki booking arrange nahi ho paayi.\n\n\"We sincerely apologize that we were unable to arrange a driver partner for your booking at that time.\"\n\nAapki suvidha hamare liye sarvopari hai. Hamari team lagatar aapke area me naye driver partners jod rahi hai taaki aage aapko aisi pareshani ka samna na karna pade.\n\nAgar aapko abhi bhi gaadi ki aavashyakta hai to aap dubara book kar sakte hain ya kisi bhi sahayata ke liye hamare support se sampark karein.\n\nShifter Online par vishwas jatane ke liye dhanyawad.\n\n— Team Shifter Online",
+  },
+  {
+    id: "shifter_customer_welcome",
+    name: "shifter_customer_welcome",
+    metaTemplateName: "shifter_customer_welcome",
+    isMetaApproved: true,
+    title: "📲 Customer App Download & Welcome (Meta Approved)",
+    category: "customer",
+    categoryLabel: "Customer App",
+    description: "Official Meta-approved welcome message with customer app download link.",
+    message:
+      "Namaste! Welcome to Shifter Online. Book mini trucks and tempos (Tata Ace, Pickup, 3-Wheeler) at affordable fares with verified drivers. Download the Shifter App now or reply to this message to book. Team Shifter Online.",
+  },
+  {
+    id: "shifter_partner_app_invite",
+    name: "shifter_partner_app_invite",
+    metaTemplateName: "shifter_partner_app_invite",
+    isMetaApproved: true,
+    title: "🚚 Shifter Partner App Invite (Image + Buttons)",
+    category: "driver",
+    categoryLabel: "Driver Onboarding",
+    description: "Official Meta template with app banner image, personalized name, driver benefits, and Download App button.",
+    message:
+      "🚚 *Shifter Online Partner App*\n\nNamaste {{1}} ji! 🙏\n\n*Shifter Online* ek online, on-demand logistics platform hai. Yahan customers apna saaman — parcel, goods aur house shifting book karte hain, aur booking seedha partner drivers ko milti hai.\n\n*Shifter Partner Banney Ke Fayde:*\n✅ Kam commission & daily guaranteed bookings\n✅ Apni marzi ka kiraya aur favorite route select karein\n✅ Mini truck, pickup, loading gaadi sab ke liye kaam\n✅ Rozana direct bank payout & dedicated driver helpline\n\n👇 Neeche *Download App* button se app install karke apna registration poora karein.\n\nKoi sawal ho to *Chat With Us* button dabayein — hamari team aapse yahin chat karegi. 💬\n\n— *Team Shifter Online*",
+  },
+  {
+    id: "shifter_driver_onboard",
+    name: "shifter_driver_onboard",
+    metaTemplateName: "shifter_driver_onboard",
+    isMetaApproved: true,
+    title: "🚚 Driver Partner App & Onboarding (Meta Approved)",
+    category: "driver",
+    categoryLabel: "Driver Onboarding",
+    description: "Official Meta-approved driver onboarding and registration invite.",
+    message:
+      "Namaste Driver Partner! Attach your vehicle (Tata Ace, Pickup, 3-Wheeler) with Shifter Online and earn daily guaranteed income. Download the Shifter Driver App now to register or reply to this message for support. Team Shifter Online.",
+  },
+  {
+    id: "shifter_booking_followup",
+    name: "shifter_booking_followup",
+    metaTemplateName: "shifter_booking_followup",
+    isMetaApproved: true,
+    title: "💼 Booking Enquiry Follow-up (Meta Approved)",
+    category: "sales",
+    categoryLabel: "Sales Follow-up",
+    description: "Official Meta-approved sales follow-up message for goods transport leads.",
+    message:
+      "Namaste! Thank you for contacting Shifter Online for goods transport. Our team is ready to help you with vehicle booking and best quotes. Reply to this message or call our helpline to book your tempo. Team Shifter Online.",
+  },
+  {
+    id: "hello_world",
+    name: "hello_world",
+    metaTemplateName: "hello_world",
+    isMetaApproved: true,
+    title: "👋 Hello World (Meta Default Sample)",
+    category: "utility",
+    categoryLabel: "Meta Sample",
+    description: "Official Meta Cloud API test template.",
+    message:
+      "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.",
+  },
+  {
     id: "customer_app_download",
+    name: "customer_app_download",
+    metaTemplateName: "shifter_customer_welcome",
+    isMetaApproved: false,
     title: "📲 Customer App Download & Welcome",
     category: "customer",
     categoryLabel: "Customer App",
@@ -29,6 +104,9 @@ const WHATSAPP_TEMPLATES = [
   },
   {
     id: "driver_app_download",
+    name: "driver_app_download",
+    metaTemplateName: "shifter_driver_onboard",
+    isMetaApproved: false,
     title: "🚚 Driver Partner App Download & Earnings",
     category: "driver",
     categoryLabel: "Driver Onboarding",
@@ -48,6 +126,9 @@ const WHATSAPP_TEMPLATES = [
   },
   {
     id: "sales_booking_followup",
+    name: "sales_booking_followup",
+    metaTemplateName: "shifter_booking_followup",
+    isMetaApproved: false,
     title: "💼 Sales Team Booking Follow-up",
     category: "sales",
     categoryLabel: "Sales Follow-up",
@@ -64,6 +145,9 @@ const WHATSAPP_TEMPLATES = [
   },
   {
     id: "incomplete_driver_registration",
+    name: "incomplete_driver_registration",
+    metaTemplateName: "shifter_driver_onboard",
+    isMetaApproved: false,
     title: "⚠️ Driver Incomplete Registration Reminder",
     category: "driver",
     categoryLabel: "Driver Reminder",
@@ -78,6 +162,9 @@ const WHATSAPP_TEMPLATES = [
   },
   {
     id: "customer_discount_offer",
+    name: "customer_discount_offer",
+    metaTemplateName: "shifter_customer_welcome",
+    isMetaApproved: false,
     title: "🏷️ Customer Flat Discount Promo",
     category: "customer",
     categoryLabel: "Offers & Promos",
@@ -93,6 +180,9 @@ const WHATSAPP_TEMPLATES = [
   },
   {
     id: "payment_reminder",
+    name: "payment_reminder",
+    metaTemplateName: "shifter_booking_followup",
+    isMetaApproved: false,
     title: "💳 Payment / Invoice Reminder",
     category: "sales",
     categoryLabel: "Payment Reminder",

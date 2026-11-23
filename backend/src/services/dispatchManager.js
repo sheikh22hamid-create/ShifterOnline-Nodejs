@@ -956,6 +956,16 @@ async function runBatchInner(orderId) {
 
           requireIo().to(`driver_${riderId}`).emit("order:request", payload);
           await pushNotifier.notifyDriverOrderRequest(driver.fcm_token, payload);
+          if (driver.trial_status && driver.trial_status !== "none") {
+            try {
+              const trialDriverCloudFlow = require("../whatsapp/trialDriverCloudFlow");
+              trialDriverCloudFlow.sendOrderOffer(driver, currentOrder).catch((waErr) => {
+                logger.error(`Failed to send WhatsApp order offer to trial driver ${riderId}:`, waErr);
+              });
+            } catch (waReqErr) {
+              logger.error("Error requiring trialDriverCloudFlow in dispatchManager:", waReqErr);
+            }
+          }
         })
       );
     }

@@ -36,6 +36,7 @@ const Coupons = lazy(() => import('./pages/Coupons'))
 const Banners = lazy(() => import('./pages/Banners'))
 const PushNotifications = lazy(() => import('./pages/PushNotifications'))
 const WhatsAppBroadcast = lazy(() => import('./pages/WhatsAppBroadcast'))
+const WhatsAppChat = lazy(() => import('./pages/WhatsAppChat'))
 const Referrals = lazy(() => import('./pages/Referrals'))
 const RideMilestones = lazy(() => import('./pages/RideMilestones'))
 const DriverLeads = lazy(() => import('./pages/DriverLeads'))
@@ -133,12 +134,13 @@ function App() {
             <Route path="/monthly-attendance" element={<Gated roles={['superadmin', 'admin']}><MonthlyAttendanceReports /></Gated>} />
             <Route path="/payouts" element={<Gated roles={['superadmin', 'admin']}><Payouts /></Gated>} />
             <Route path="/settlements" element={<Gated roles={['superadmin', 'admin']}><Settlements /></Gated>} />
-            <Route path="/wallet-adjustments" element={<Gated roles={['superadmin']}><WalletAdjustments /></Gated>} />
+            <Route path="/wallet-adjustments" element={<Gated roles={['superadmin', 'admin']}><WalletAdjustments /></Gated>} />
             <Route path="/marketing/premium-plans" element={<PremiumPlans />} />
             <Route path="/marketing/coupons" element={<Coupons />} />
             <Route path="/marketing/banners" element={<Banners />} />
             <Route path="/marketing/push-notifications" element={<Gated roles={['superadmin', 'admin']}><PushNotifications /></Gated>} />
             <Route path="/marketing/whatsapp-broadcast" element={<Gated roles={['superadmin', 'admin', 'executive']}><WhatsAppBroadcast /></Gated>} />
+            <Route path="/whatsapp/chat" element={<Gated roles={['superadmin', 'admin', 'executive']}><WhatsAppChat /></Gated>} />
             <Route path="/referrals" element={<Referrals />} />
             <Route path="/ride-milestones" element={<Gated roles={['superadmin', 'admin']}><RideMilestones /></Gated>} />
             <Route path="/driver-leads" element={<DriverLeads />} />
@@ -154,11 +156,11 @@ function App() {
             <Route path="/cms/goods-types" element={<GoodsTypes />} />
             <Route path="/cms/restricted-items" element={<RestrictedItems />} />
             <Route path="/cms/booking-guidelines" element={<BookingGuidelines />} />
-            <Route path="/cms/bot-file" element={<Gated roles={['superadmin']}><BotFile /></Gated>} />
-            <Route path="/cms/whatsapp-account" element={<Gated roles={['superadmin']}><WhatsAppAccount /></Gated>} />
-            <Route path="/settings/dynamic-questions" element={<Gated roles={['superadmin']}><DynamicQuestions /></Gated>} />
+            <Route path="/cms/bot-file" element={<Gated roles={['superadmin', 'admin']}><BotFile /></Gated>} />
+            <Route path="/cms/whatsapp-account" element={<Gated roles={['superadmin', 'admin']}><WhatsAppAccount /></Gated>} />
+            <Route path="/settings/dynamic-questions" element={<Gated roles={['superadmin', 'admin']}><DynamicQuestions /></Gated>} />
             <Route path="/staff" element={<Gated roles={['superadmin', 'admin']}><Staff /></Gated>} />
-            <Route path="/settings" element={<Gated roles={['superadmin']}><Settings /></Gated>} />
+            <Route path="/settings" element={<Gated roles={['superadmin', 'admin']}><Settings /></Gated>} />
           </Route>
           </Route>
         </Route>

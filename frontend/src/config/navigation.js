@@ -44,12 +44,13 @@ import {
   Receipt,
   Timer,
   MessageSquareText,
+  MessageSquare,
   ClipboardList,
 } from 'lucide-react'
 
 const ALL_STAFF = ['superadmin', 'admin', 'executive']
 const MANAGERS = ['superadmin', 'admin']
-const SUPERADMIN_ONLY = ['superadmin']
+const SUPERADMIN_ONLY = ['superadmin', 'admin']
 
 export const NAV_GROUPS = [
   {
@@ -107,6 +108,7 @@ export const NAV_GROUPS = [
       { to: '/marketing/coupons', label: 'Promo Coupons', icon: Ticket, roles: ALL_STAFF, built: true },
       { to: '/marketing/banners', label: 'App Banners', icon: Image, roles: ALL_STAFF, built: true },
       { to: '/marketing/push-notifications', label: 'Push Notifications', icon: Megaphone, roles: MANAGERS, built: true },
+      { to: '/whatsapp/chat', label: 'WhatsApp Live Chat & Inbox', icon: MessageSquare, roles: ALL_STAFF, built: true },
       { to: '/marketing/whatsapp-broadcast', label: 'WhatsApp Outreach & Templates', icon: MessageSquareText, roles: ALL_STAFF, built: true },
       { to: '/referrals', label: 'Referral Network', icon: Share2, roles: ALL_STAFF, built: true },
       { to: '/ride-milestones', label: 'Ride Milestones', icon: Milestone, roles: MANAGERS, built: true },
@@ -122,12 +124,12 @@ export const NAV_GROUPS = [
       { to: '/cms/goods-types', label: 'Goods Types', icon: PackageOpen, roles: ALL_STAFF, built: true },
       { to: '/cms/restricted-items', label: 'Restricted Items', icon: ShieldAlert, roles: ALL_STAFF, built: true },
       { to: '/cms/booking-guidelines', label: 'Booking Guidelines', icon: ShieldAlert, roles: ALL_STAFF, built: true },
-      { to: '/cms/bot-file', label: 'Bot File (AI Knowledge)', icon: Bot, roles: ['superadmin'], built: true },
-      { to: '/cms/whatsapp-account', label: 'WhatsApp Account', icon: Smartphone, roles: ['superadmin'], built: true },
-      { to: '/settings/dynamic-questions', label: 'Dynamic Questions', icon: ListChecks, roles: ['superadmin'], built: true },
-      { to: '/settings', label: 'Payment Gateways', icon: CreditCard, roles: ['superadmin'], built: true },
+      { to: '/cms/bot-file', label: 'Bot File (AI Knowledge)', icon: Bot, roles: MANAGERS, built: true },
+      { to: '/cms/whatsapp-account', label: 'WhatsApp Account', icon: Smartphone, roles: MANAGERS, built: true },
+      { to: '/settings/dynamic-questions', label: 'Dynamic Questions', icon: ListChecks, roles: MANAGERS, built: true },
+      { to: '/settings', label: 'Payment Gateways', icon: CreditCard, roles: MANAGERS, built: true },
       { to: '/staff', label: 'Staff Management', icon: UserCog, roles: MANAGERS, built: true },
-      { to: '/settings', label: 'Platform Settings', icon: Settings, roles: ['superadmin'], built: true },
+      { to: '/settings', label: 'Platform Settings', icon: Settings, roles: MANAGERS, built: true },
     ],
   },
 ]

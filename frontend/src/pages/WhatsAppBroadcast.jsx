@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   MessageSquare,
@@ -22,6 +22,16 @@ import {
   UserPlus,
   HelpCircle,
   ShieldCheck,
+  Save,
+  RotateCcw,
+  Image as ImageIcon,
+  Video,
+  Trash2,
+  Upload,
+  Play,
+  Film,
+  X,
+  FileText,
 } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -32,6 +42,7 @@ export default function WhatsAppBroadcast() {
   const toast = useToast()
   const canSend = hasRole('superadmin', 'admin', 'executive')
   const isSuperAdmin = hasRole('superadmin')
+  const canEditPermanentTemplate = hasRole('superadmin', 'admin')
 
   // WhatsApp bot connection state
   const [botStatus, setBotStatus] = useState({
@@ -50,6 +61,16 @@ export default function WhatsAppBroadcast() {
   const [rawRecipients, setRawRecipients] = useState('')
   const [campaignName, setCampaignName] = useState('Customer App Outreach')
   const [messageText, setMessageText] = useState('')
+
+  // Media Attachment state
+  const [attachment, setAttachment] = useState(null) // { url, relativePath, type: 'image' | 'video', name, size }
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const imageInputRef = useRef(null)
+  const videoInputRef = useRef(null)
+
+  // Template saving states
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [resettingTemplate, setResettingTemplate] = useState(false)
 
   // Dispatch & Progress state
   const [sending, setSending] = useState(false)
@@ -82,10 +103,18 @@ export default function WhatsAppBroadcast() {
       if (res.data?.success || res.data?.Result) {
         const list = res.data.data || []
         setTemplates(list)
-        if (list.length > 0 && !messageText) {
-          setSelectedTemplateId(list[0].id)
-          setMessageText(list[0].message)
-          setCampaignName(list[0].title.replace(/[^\w\s-]/gi, '').trim())
+        if (list.length > 0 && !selectedTemplateId) {
+          const first = list[0]
+          setSelectedTemplateId(first.id)
+          setMessageText(first.message || '')
+          setCampaignName(first.title.replace(/[^\w\s-]/gi, '').trim())
+          if (first.media_url) {
+            setAttachment({
+              url: first.media_url,
+              type: first.media_type || 'image',
+              name: first.media_filename || 'Saved Media Attachment',
+            })
+          }
         }
       }
     } catch (err) {
@@ -94,7 +123,7 @@ export default function WhatsAppBroadcast() {
     } finally {
       setLoadingTemplates(false)
     }
-  }, [messageText, toast])
+  }, [selectedTemplateId, toast])
 
   useEffect(() => {
     fetchStatus()
@@ -102,6 +131,11 @@ export default function WhatsAppBroadcast() {
     const interval = setInterval(fetchStatus, 8000)
     return () => clearInterval(interval)
   }, [fetchStatus, fetchTemplates])
+
+  // Currently active template object
+  const currentTemplate = useMemo(() => {
+    return templates.find((t) => t.id === selectedTemplateId) || null
+  }, [templates, selectedTemplateId])
 
   // Parse and normalize phone numbers entered in textarea
   const parsedRecipients = useMemo(() => {
@@ -126,9 +160,157 @@ export default function WhatsAppBroadcast() {
   // Select a template
   function handleSelectTemplate(tpl) {
     setSelectedTemplateId(tpl.id)
-    setMessageText(tpl.message)
+    setMessageText(tpl.message || '')
     setCampaignName(tpl.title.replace(/[^\w\s-]/gi, '').trim())
+    if (tpl.media_url) {
+      setAttachment({
+        url: tpl.media_url,
+        type: tpl.media_type || 'image',
+        name: tpl.media_filename || (tpl.media_type === 'video' ? 'Attached Video' : 'Attached Image'),
+      })
+    } else {
+      setAttachment(null)
+    }
     toast.info(`Applied template: "${tpl.title}"`)
+  }
+
+  // Check if current message/attachment differs from the permanent saved version
+  const hasUnsavedEdits = useMemo(() => {
+    if (!currentTemplate) return false
+    const msgChanged = messageText.trim() !== (currentTemplate.message || '').trim()
+    const mediaChanged = (attachment?.url || null) !== (currentTemplate.media_url || null)
+    return msgChanged || mediaChanged
+  }, [currentTemplate, messageText, attachment])
+
+  // Feature 1: Save Template permanently in DB
+  async function handleSaveTemplate() {
+    if (!selectedTemplateId) {
+      toast.error('Please select a template first.')
+      return
+    }
+    if (!messageText.trim() && !attachment?.url) {
+      toast.error('Message text or media attachment is required.')
+      return
+    }
+
+    setSavingTemplate(true)
+    try {
+      const res = await api.put(`/../whatsapp/templates/${selectedTemplateId}`, {
+        message: messageText.trim(),
+        media_url: attachment?.url || null,
+        media_type: attachment?.type || null,
+        media_filename: attachment?.name || null,
+      })
+
+      if (res.data?.success || res.data?.Result) {
+        toast.success(`Template "${currentTemplate?.title || selectedTemplateId}" saved permanently!`)
+        const updatedTpl = res.data.data
+        setTemplates((prev) =>
+          prev.map((t) => (t.id === selectedTemplateId ? { ...t, ...updatedTpl } : t))
+        )
+      }
+    } catch (err) {
+      console.error('Failed to save template:', err)
+      toast.error(err.response?.data?.msg || err.message || 'Failed to permanently save template.')
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  // Feature 1: Reset to latest saved version in DB
+  function handleResetToSavedTemplate() {
+    if (!currentTemplate) return
+    setMessageText(currentTemplate.message || '')
+    if (currentTemplate.media_url) {
+      setAttachment({
+        url: currentTemplate.media_url,
+        type: currentTemplate.media_type || 'image',
+        name: currentTemplate.media_filename || 'Saved Media Attachment',
+      })
+    } else {
+      setAttachment(null)
+    }
+    toast.info('Reverted to latest saved template content.')
+  }
+
+  // Feature 1: Reset to original factory pre-made default
+  async function handleResetToFactoryDefault() {
+    if (!selectedTemplateId) return
+    setResettingTemplate(true)
+    try {
+      const res = await api.post(`/../whatsapp/templates/${selectedTemplateId}/reset`)
+      if (res.data?.success || res.data?.Result) {
+        const resetTpl = res.data.data
+        setTemplates((prev) =>
+          prev.map((t) => (t.id === selectedTemplateId ? { ...t, ...resetTpl } : t))
+        )
+        setMessageText(resetTpl.message || '')
+        setAttachment(null)
+        toast.success('Template restored to original default!')
+      }
+    } catch (err) {
+      console.error('Failed to reset template:', err)
+      toast.error(err.response?.data?.msg || err.message || 'Failed to reset template.')
+    } finally {
+      setResettingTemplate(false)
+    }
+  }
+
+  // Feature 2: Media upload handler (Images up to 10MB, Videos up to 16MB)
+  async function handleMediaFileSelect(e, targetType) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = '' // Reset input
+
+    const ext = '.' + (file.name.split('.').pop() || '').toLowerCase()
+    const isVideo = targetType === 'video' || ['.mp4', '.3gp', '.mov'].includes(ext)
+
+    // Size limit
+    const maxBytes = isVideo ? 16 * 1024 * 1024 : 10 * 1024 * 1024
+    if (file.size > maxBytes) {
+      toast.error(
+        `File is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Max size for ${
+          isVideo ? 'videos is 16 MB' : 'images is 10 MB'
+        }.`
+      )
+      return
+    }
+
+    // Format validation
+    const allowedExts = isVideo ? ['.mp4', '.3gp', '.mov'] : ['.jpg', '.jpeg', '.png', '.webp']
+    if (!allowedExts.includes(ext)) {
+      toast.error(
+        `Unsupported format (${ext}). Allowed: ${allowedExts.join(', ')}`
+      )
+      return
+    }
+
+    setUploadingMedia(true)
+    try {
+      const formData = new FormData()
+      formData.append('media', file)
+
+      const res = await api.post('/../whatsapp/upload-media', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+
+      if (res.data?.success || res.data?.Result) {
+        const data = res.data.data
+        setAttachment({
+          url: data.url,
+          relativePath: data.relativePath,
+          type: data.mediaType || (isVideo ? 'video' : 'image'),
+          name: file.name,
+          size: file.size,
+        })
+        toast.success(`${isVideo ? 'Video' : 'Image'} attached successfully!`)
+      }
+    } catch (err) {
+      console.error('Media upload failed:', err)
+      toast.error(err.response?.data?.msg || err.message || 'Failed to upload media.')
+    } finally {
+      setUploadingMedia(false)
+    }
   }
 
   // Quick import from registration leads
@@ -210,8 +392,8 @@ export default function WhatsAppBroadcast() {
       toast.error('Please enter at least one valid 10-15 digit phone number.')
       return
     }
-    if (!messageText.trim()) {
-      toast.error('Message text cannot be empty.')
+    if (!messageText.trim() && !attachment?.url) {
+      toast.error('Message text or media attachment is required.')
       return
     }
     if (botStatus.status !== 'CONNECTED') {
@@ -228,6 +410,8 @@ export default function WhatsAppBroadcast() {
         recipients: parsedRecipients,
         message: messageText.trim(),
         campaignName: campaignName || 'WhatsApp Outreach',
+        mediaUrl: attachment?.url || null,
+        mediaType: attachment?.type || null,
       })
 
       if (res.data?.success || res.data?.Result) {
@@ -248,8 +432,31 @@ export default function WhatsAppBroadcast() {
     ? templates
     : templates.filter((t) => t.category === categoryFilter)
 
+  function formatBytes(bytes) {
+    if (!bytes) return ''
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
   return (
     <div className="space-y-6">
+      {/* Hidden File Inputs for Media Upload */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        style={{ display: 'none' }}
+        onChange={(e) => handleMediaFileSelect(e, 'image')}
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept="video/mp4,video/3gpp,video/quicktime"
+        style={{ display: 'none' }}
+        onChange={(e) => handleMediaFileSelect(e, 'video')}
+      />
+
       {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border p-5 surface-card">
         <div className="flex items-center gap-3.5">
@@ -273,7 +480,7 @@ export default function WhatsAppBroadcast() {
               </span>
             </div>
             <p className="mt-0.5 text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
-              Send pre-built WhatsApp templates (App download, onboarding, sales follow-ups) to single or bulk numbers with safe pacing.
+              Send pre-built or permanently customized WhatsApp templates with image/video attachments to single or bulk recipients with safe anti-ban pacing.
             </p>
           </div>
         </div>
@@ -465,12 +672,27 @@ export default function WhatsAppBroadcast() {
                         : { borderColor: 'var(--border)', background: 'var(--surface)' }
                     }
                   >
-                    <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center justify-between w-full gap-1">
                       <span className="text-xs font-bold truncate" style={{ color: 'var(--ink)' }}>
                         {tpl.title}
                       </span>
                       {isSelected && <Check size={14} className="text-emerald-600 shrink-0" />}
                     </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {tpl.is_customized && (
+                        <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                          ✏️ Saved Custom
+                        </span>
+                      )}
+                      {tpl.media_url && (
+                        <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-400 flex items-center gap-1">
+                          {tpl.media_type === 'video' ? <Film size={10} /> : <ImageIcon size={10} />}
+                          {tpl.media_type === 'video' ? 'Video' : 'Image'}
+                        </span>
+                      )}
+                    </div>
+
                     <p className="mt-1 line-clamp-2 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
                       {tpl.description}
                     </p>
@@ -480,8 +702,8 @@ export default function WhatsAppBroadcast() {
             </div>
           </div>
 
-          {/* Card 3: Message Text Editor */}
-          <div className="rounded-xl border p-5 surface-card space-y-3">
+          {/* Card 3: Message Text Editor with Permanent Template Management */}
+          <div className="rounded-xl border p-5 surface-card space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles size={18} className="text-emerald-600" />
@@ -489,9 +711,16 @@ export default function WhatsAppBroadcast() {
                   3. Customize Message Text
                 </h2>
               </div>
-              <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-                {messageText.length} / 2000 chars
-              </span>
+              <div className="flex items-center gap-2 text-[11.5px]">
+                {hasUnsavedEdits && (
+                  <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                    ● Temporary Edits
+                  </span>
+                )}
+                <span style={{ color: 'var(--ink-muted)' }}>
+                  {messageText.length} / 2000 chars
+                </span>
+              </div>
             </div>
 
             <div>
@@ -505,35 +734,195 @@ export default function WhatsAppBroadcast() {
               />
 
               <textarea
-                rows={9}
+                rows={8}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Type or edit message text..."
+                placeholder="Type or edit message text... (Or leave empty if sending media-only)"
                 className="w-full rounded-lg border p-3 text-xs outline-none transition-colors focus:border-emerald-500"
                 style={{ background: 'var(--surface)', color: 'var(--ink)', borderColor: 'var(--border)' }}
               />
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-              <span>
-                Tip: Use <code>*bold*</code>, <code>_italic_</code>, and line breaks for WhatsApp formatting.
-              </span>
-              {selectedTemplateId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const orig = templates.find((t) => t.id === selectedTemplateId)
-                    if (orig) setMessageText(orig.message)
-                  }}
-                  className="font-semibold text-emerald-600 hover:underline"
-                >
-                  Reset to Template Default
-                </button>
-              )}
+            {/* Template Actions Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+              <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                Tip: Formatting: <code>*bold*</code>, <code>_italic_</code>, and line breaks.
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Reset to Saved Version */}
+                {selectedTemplateId && (
+                  <button
+                    type="button"
+                    onClick={handleResetToSavedTemplate}
+                    disabled={!hasUnsavedEdits}
+                    className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--surface-raised)] disabled:opacity-40"
+                    style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+                    title="Discard temporary edits and revert to the saved database template"
+                  >
+                    <RotateCcw size={13} />
+                    Reset to Saved
+                  </button>
+                )}
+
+                {/* Reset to Factory Default (if customized) */}
+                {selectedTemplateId && currentTemplate?.is_customized && canEditPermanentTemplate && (
+                  <button
+                    type="button"
+                    onClick={handleResetToFactoryDefault}
+                    disabled={resettingTemplate}
+                    className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-40"
+                    title="Remove custom overrides and restore factory default template"
+                  >
+                    <RefreshCw size={13} className={resettingTemplate ? 'animate-spin' : ''} />
+                    Factory Default
+                  </button>
+                )}
+
+                {/* Save Template Permanently */}
+                {canEditPermanentTemplate && selectedTemplateId && (
+                  <button
+                    type="button"
+                    onClick={handleSaveTemplate}
+                    disabled={savingTemplate || !selectedTemplateId}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition-opacity hover:opacity-90 disabled:opacity-40"
+                    title="Permanently save current text and attached media to this template in database"
+                  >
+                    <Save size={14} className={savingTemplate ? 'animate-spin' : ''} />
+                    {savingTemplate ? 'Saving...' : 'Save Template'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Action Button */}
+          {/* Card 4: Media Attachments (Images & Videos) */}
+          <div className="rounded-xl border p-5 surface-card space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ImageIcon size={18} className="text-emerald-600" />
+                <h2 className="text-sm font-bold" style={{ color: 'var(--ink)' }}>
+                  4. Media Attachment (Image / Video)
+                </h2>
+              </div>
+              <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                Optional • Supported: JPG, PNG, WEBP (10MB), MP4, 3GP, MOV (16MB)
+              </span>
+            </div>
+
+            {/* If no attachment: show upload buttons */}
+            {!attachment ? (
+              <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600">
+                  <Upload size={22} className={uploadingMedia ? 'animate-bounce' : ''} />
+                </div>
+                <h3 className="text-xs font-bold" style={{ color: 'var(--ink)' }}>
+                  {uploadingMedia ? 'Uploading media to Cloudinary...' : 'Attach an Image or Video to your WhatsApp message'}
+                </h3>
+                <p className="mt-1 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                  Media is delivered directly into recipient&apos;s WhatsApp with your message as a caption.
+                </p>
+
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    disabled={uploadingMedia}
+                    onClick={() => imageInputRef.current?.click()}
+                    className="flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-bold transition-colors hover:bg-[var(--surface-raised)]"
+                    style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+                  >
+                    <ImageIcon size={15} className="text-emerald-600" />
+                    Add Image (Max 10MB)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={uploadingMedia}
+                    onClick={() => videoInputRef.current?.click()}
+                    className="flex items-center gap-2 rounded-lg border px-4 py-2 text-xs font-bold transition-colors hover:bg-[var(--surface-raised)]"
+                    style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+                  >
+                    <Video size={15} className="text-blue-600" />
+                    Add Video (Max 16MB)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* If attachment exists: Preview & Management Box */
+              <div className="rounded-xl border p-4 space-y-3" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+                      {attachment.type === 'video' ? <Film size={20} /> : <ImageIcon size={20} />}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold truncate max-w-[220px] sm:max-w-xs" style={{ color: 'var(--ink)' }}>
+                          {attachment.name || 'Attached Media'}
+                        </span>
+                        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">
+                          {attachment.type}
+                        </span>
+                      </div>
+                      {attachment.size && (
+                        <div className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                          {formatBytes(attachment.size)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (attachment.type === 'video') {
+                          videoInputRef.current?.click()
+                        } else {
+                          imageInputRef.current?.click()
+                        }
+                      }}
+                      className="rounded-lg border px-2.5 py-1 text-xs font-semibold hover:bg-[var(--surface-raised)]"
+                      style={{ borderColor: 'var(--border)', color: 'var(--ink)' }}
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAttachment(null)}
+                      className="flex items-center gap-1 rounded-lg border border-red-500/30 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-500/10"
+                      title="Remove media attachment"
+                    >
+                      <Trash2 size={13} />
+                      Remove
+                    </button>
+                  </div>
+                </div>
+
+                {/* Media Preview Box */}
+                <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+                  {attachment.type === 'video' ? (
+                    <video
+                      src={attachment.url}
+                      controls
+                      className="max-h-60 w-full bg-black object-contain"
+                    />
+                  ) : (
+                    <img
+                      src={attachment.url}
+                      alt="Attached preview"
+                      className="max-h-60 w-full bg-slate-900/5 object-contain"
+                    />
+                  )}
+                </div>
+
+                <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                  💡 <strong>Tip:</strong> You can broadcast this media once, or click <strong>&quot;Save Template&quot;</strong> in Section 3 to store this media with the template permanently!
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Action Card: Dispatch Broadcast */}
           <div className="flex items-center justify-between rounded-xl border p-4 surface-card">
             <div>
               <div className="text-xs font-bold" style={{ color: 'var(--ink)' }}>
@@ -541,8 +930,9 @@ export default function WhatsAppBroadcast() {
               </div>
               <div className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
                 {parsedRecipients.length} recipient{parsedRecipients.length === 1 ? '' : 's'} •{' '}
+                {attachment ? `Attached: ${attachment.type.toUpperCase()}` : 'Text only'} •{' '}
                 {parsedRecipients.length > 1
-                  ? `~${(parsedRecipients.length * 1.2).toFixed(1)}s safe pacing delay`
+                  ? `~${(parsedRecipients.length * 1.2).toFixed(1)}s safe anti-ban delay`
                   : 'Immediate'}
               </div>
             </div>
@@ -552,7 +942,7 @@ export default function WhatsAppBroadcast() {
               disabled={
                 sending ||
                 parsedRecipients.length === 0 ||
-                !messageText.trim() ||
+                (!messageText.trim() && !attachment?.url) ||
                 !isConnected ||
                 !canSend
               }
@@ -566,7 +956,7 @@ export default function WhatsAppBroadcast() {
               className="flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-xs font-bold text-white shadow-md transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <Send size={15} className={sending ? 'animate-bounce' : ''} />
-              {sending ? 'Sending WhatsApp...' : `Send to ${parsedRecipients.length || 0} Number${parsedRecipients.length === 1 ? '' : 's'}`}
+              {sending ? 'Sending WhatsApp...' : `Send Broadcast (${parsedRecipients.length || 0})`}
             </button>
           </div>
         </div>
@@ -618,12 +1008,43 @@ export default function WhatsAppBroadcast() {
                   </span>
                 </div>
 
-                {/* WhatsApp Message Bubble */}
+                {/* WhatsApp Message Bubble with optional Media Preview */}
                 <div className="flex flex-col items-start">
-                  <div className="relative max-w-[94%] rounded-xl rounded-tl-none bg-white p-3 text-xs leading-relaxed text-slate-900 shadow-md">
-                    <div className="whitespace-pre-line break-words">
+                  <div className="relative max-w-[94%] rounded-xl rounded-tl-none bg-white p-2.5 text-xs leading-relaxed text-slate-900 shadow-md">
+                    {/* Media Preview inside WhatsApp Bubble */}
+                    {attachment && attachment.type === 'image' && (
+                      <div className="mb-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                        <img
+                          src={attachment.url}
+                          alt="Attachment preview"
+                          className="max-h-52 w-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none'
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {attachment && attachment.type === 'video' && (
+                      <div className="mb-2 overflow-hidden rounded-lg border border-slate-300 bg-slate-950 text-white">
+                        <video
+                          src={attachment.url}
+                          controls
+                          className="max-h-52 w-full"
+                        />
+                        <div className="flex items-center gap-1.5 p-1 text-[10px] text-slate-300">
+                          <Play size={11} className="text-emerald-400" />
+                          <span className="truncate">{attachment.name || 'Video attachment'}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Message / Caption Text */}
+                    <div className="whitespace-pre-line break-words px-1">
                       {messageText ? (
                         messageText
+                      ) : attachment ? (
+                        <span className="italic text-slate-400">(Media only message)</span>
                       ) : (
                         <span className="italic text-slate-400">
                           Select a template or type your message to see a live preview here...
@@ -666,12 +1087,12 @@ export default function WhatsAppBroadcast() {
                   Confirm WhatsApp Broadcast
                 </h3>
                 <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                  You are about to dispatch this message to multiple recipients.
+                  You are about to dispatch this campaign to multiple recipients.
                 </p>
               </div>
             </div>
 
-            <div className="rounded-xl border p-3.5 text-xs space-y-1.5" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="rounded-xl border p-3.5 text-xs space-y-2" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
               <div className="flex justify-between">
                 <span style={{ color: 'var(--ink-muted)' }}>Campaign:</span>
                 <span className="font-semibold" style={{ color: 'var(--ink)' }}>{campaignName || 'General Outreach'}</span>
@@ -679,6 +1100,12 @@ export default function WhatsAppBroadcast() {
               <div className="flex justify-between">
                 <span style={{ color: 'var(--ink-muted)' }}>Total Recipients:</span>
                 <span className="font-bold text-emerald-600">{parsedRecipients.length} phone numbers</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--ink-muted)' }}>Attachment:</span>
+                <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                  {attachment ? `${attachment.type.toUpperCase()}: ${attachment.name || 'Attached'}` : 'None (Text Only)'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span style={{ color: 'var(--ink-muted)' }}>Anti-Ban Pacing:</span>
