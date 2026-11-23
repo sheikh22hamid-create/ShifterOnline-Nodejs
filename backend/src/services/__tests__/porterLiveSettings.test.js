@@ -102,7 +102,8 @@ describe("getConfig cache", () => {
     await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7] }));
     expect((await settings.getConfig()).enabled).toBe(true);
-    expect(prisma.app_settings.findFirst).toHaveBeenCalledTimes(2);
+    // 3 reads: first getConfig + saveConfig's preserve-on-omit read of app_adjust_pct + the reload after invalidation.
+    expect(prisma.app_settings.findFirst).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -126,9 +127,24 @@ describe("appAdjustPct", () => {
     const arg = prisma.app_settings.upsert.mock.calls[0][0];
     expect(JSON.parse(arg.create.setting_value).app_adjust_pct).toEqual({ 91: 20, 1: 28 });
   });
-  it("saveConfig defaults app_adjust_pct to empty when omitted", async () => {
+  it("saveConfig gives empty app_adjust_pct when omitted and nothing is stored", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(null);
     prisma.app_settings.upsert.mockResolvedValue({});
     const cfg = await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+    expect(cfg.appAdjustPct).toEqual({});
+  });
+  it("saveConfig keeps the stored app_adjust_pct when the field is omitted (no accidental wipe)", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], app_adjust_pct: { 91: 20, 1: 28 } }));
+    prisma.app_settings.upsert.mockResolvedValue({});
+    const cfg = await settings.saveConfig({ enabled: false, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+    expect(cfg.appAdjustPct).toEqual({ 91: 20, 1: 28 });
+    const arg = prisma.app_settings.upsert.mock.calls[0][0];
+    expect(JSON.parse(arg.create.setting_value).app_adjust_pct).toEqual({ 91: 20, 1: 28 });
+  });
+  it("saveConfig clears app_adjust_pct on an explicit empty object", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], app_adjust_pct: { 91: 20 } }));
+    prisma.app_settings.upsert.mockResolvedValue({});
+    const cfg = await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10, appAdjustPct: {} });
     expect(cfg.appAdjustPct).toEqual({});
   });
   it("saveConfig rejects a percent above 90 or below 0 without writing", async () => {

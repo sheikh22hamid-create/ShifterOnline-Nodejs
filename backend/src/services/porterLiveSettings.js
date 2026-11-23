@@ -88,18 +88,23 @@ async function saveConfig({ enabled, cityIds, timeoutMs, cacheMinutes, appAdjust
   const c = Number(cacheMinutes);
   if (!(t >= TIMEOUT_MIN && t <= TIMEOUT_MAX)) throw new Error(`timeoutMs must be between ${TIMEOUT_MIN} and ${TIMEOUT_MAX}`);
   if (!(c >= 1 && c <= 60)) throw new Error("cacheMinutes must be between 1 and 60");
-  if (appAdjustPct !== undefined && appAdjustPct !== null) {
-    if (typeof appAdjustPct !== "object" || Array.isArray(appAdjustPct)) {
+  let adjust;
+  if (appAdjustPct === undefined) {
+    // Field not sent at all (e.g. a stale admin tab / old bundle saving for another reason): keep the stored
+    // map instead of wiping every configured percent. An explicit {} or null still clears it.
+    adjust = (await loadConfig()).appAdjustPct || {};
+  } else {
+    if (appAdjustPct !== null && (typeof appAdjustPct !== "object" || Array.isArray(appAdjustPct))) {
       throw new Error("appAdjustPct must be an object of vehicleId -> percent");
     }
-    for (const [k, v] of Object.entries(appAdjustPct)) {
+    for (const [k, v] of Object.entries(appAdjustPct || {})) {
       const id = Number(k);
       const pct = Number(v);
       if (!Number.isInteger(id) || id <= 0) throw new Error(`appAdjustPct has an invalid vehicle id: ${k}`);
       if (!(Number.isFinite(pct) && pct >= 0 && pct <= ADJUST_MAX)) throw new Error(`appAdjustPct[${k}] must be between 0 and ${ADJUST_MAX}`);
     }
+    adjust = normalizeAdjust(appAdjustPct || {});
   }
-  const adjust = normalizeAdjust(appAdjustPct || {});
   const config = { enabled: enabled === true, cityIds: cityIds.map(Number), timeoutMs: Math.round(t), cacheMinutes: Math.round(c), appAdjustPct: adjust };
   const setting_value = JSON.stringify({ enabled: config.enabled, city_ids: config.cityIds, timeout_ms: config.timeoutMs, cache_minutes: config.cacheMinutes, app_adjust_pct: config.appAdjustPct });
   const where = { setting_key: KEY };

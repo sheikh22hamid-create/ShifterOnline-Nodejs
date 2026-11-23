@@ -21,9 +21,11 @@ const PORTER_VEHICLES = [
   { id: 1, label: 'Tata Ace' },
 ]
 const adjustFromConfig = (m) => Object.fromEntries(Object.entries(m || {}).map(([k, v]) => [k, String(v)]))
+// Build from the whole loaded map (not just the six shown here), so a percent set for any other Porter
+// vehicle id isn't wiped on save. Blank / 0 entries are dropped (backend reads a missing id as no cut).
 const adjustToPayload = (m) => Object.fromEntries(
-  PORTER_VEHICLES
-    .map((v) => [v.id, Number(m?.[v.id])])
+  Object.entries(m || {})
+    .map(([k, v]) => [k, Number(v)])
     .filter(([, n]) => Number.isFinite(n) && n > 0),
 )
 
