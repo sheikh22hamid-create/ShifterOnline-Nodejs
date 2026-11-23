@@ -153,3 +153,15 @@ to the customer's city. Order creation uses the order's resolved city (the same 
 - Exact cache/timeout plumbing, exact admin UI layout, how stats are exposed (admin endpoint).
 - Tests: pricingEngine with/without anchor (no-anchor output must equal today's), porterQuoteService
   (cache, timeout, breaker, guard, city gate), repricing paths keep the anchor, route-change scaling.
+
+## Deploy order
+
+1. **Migration first.** Apply `20261122010000_add_pkg_order_porter_quote` on a database BEFORE this backend is
+   deployed against it. The Prisma client selects `pkg_order.porter_quote` on every `pkg_order` read, so without
+   the column every order read fails with P2022 (not only Porter-priced ones).
+2. **VPS bot.** Deploy `Porter Driver Scraping Bot/porter_quote.js` and the `POST /api/porter-quote` route, and set
+   `PORTER_QUOTE_MOBILE` (the Porter account used for quotes) in the bot's environment. Restart the bot.
+3. **Backend.** Deploy the backend. The `porter_live_pricing` switch stays OFF (default) after the deploy, so
+   pricing is unchanged.
+4. **Switch.** Turn it on (Rate Cards > Porter Live Pricing, one city) only on DEV, and only after the owner has
+   tested there. Prod stays off until the owner asks.
