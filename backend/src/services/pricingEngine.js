@@ -754,6 +754,67 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   }
   const estimatePriceSource = porterAnchor ? "porter" : "rate_card";
 
+  const mappedPackages = packages.map((pkg) => {
+    const discountedPkg = applyPlanDiscount(pkg, discount);
+    const quotedAt = new Date();
+    const isNight = porterAnchor ? false : isNightFor(discountedPkg, vehicleSlabConfig, quotedAt);
+    const combinedExtraCharge = resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge;
+
+    const grossBreakdown = calculateFareBreakdown(
+      pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
+      vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, quotedAt, porterAnchor
+    );
+    const isSlabPriced = vehicleSlabConfig && pkg?.use_linear_pricing !== true;
+    const pkgForNet = isSlabPriced ? pkg : discountedPkg;
+    const netBreakdown = discount
+      ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, extraBodyCharge, quotedAt, porterAnchor)
+      : grossBreakdown;
+
+    return {
+      package_id: pkg.id,
+      title: pkg.title,
+      user_title: pkg.user_title || pkg.title,
+      driver_title: pkg.driver_title || pkg.title,
+      min_charge: Number(discountedPkg.min_charge),
+      per_km_charge: Number(discountedPkg.per_km_charge),
+      original_min_charge: Number(pkg.min_charge),
+      original_per_km_charge: Number(pkg.per_km_charge),
+      radius_charge: roundMoney(calculateRadiusCharge(pkg, resolvedRadiusKm)),
+      base_fare_charge: grossBreakdown.baseFare,
+      distance_charge_amount: grossBreakdown.distanceCharge,
+      service_charge_amount: grossBreakdown.serviceCharge,
+      night_charge_amount: grossBreakdown.nightCharge,
+      extra_charge_amount: grossBreakdown.extraCharge,
+      covered_charge_amount: extraBodyCharge,
+      body_charge_amount: extraBodyCharge,
+      discount_amount: round2(Math.max(0, grossBreakdown.total - netBreakdown.total)),
+      estimated_fare: netBreakdown.total,
+      is_night: isNight,
+      price_source: estimatePriceSource,
+    };
+  });
+
+  // "Other platform" price comparison for the app: the live Porter quote (Model-3 level) vs OUR cheapest
+  // tier (Super Saver). Only when Porter priced this estimate AND we are genuinely cheaper; never fabricated.
+  let comparison = null;
+  if (porterAnchor && mappedPackages.length) {
+    const otherFare = Math.round(Number(porterAnchor.fare));
+    const cheapest = mappedPackages.reduce((lo, p) => (p.estimated_fare < lo.estimated_fare ? p : lo));
+    const ourFare = Math.round(Number(cheapest.estimated_fare));
+    const save = otherFare - ourFare;
+    if (otherFare > 0 && ourFare > 0 && save > 0) {
+      comparison = {
+        other_platform_fare: otherFare,
+        our_fare: ourFare,
+        our_package_id: cheapest.package_id,
+        our_title: cheapest.user_title,
+        save_amount: save,
+        save_percent: Math.round((save / otherFare) * 100),
+        quoted_at: typeof porterAnchor.quoted_at === "string" ? porterAnchor.quoted_at : null,
+      };
+    }
+  }
+
   return {
     Result: true,
     price_source: estimatePriceSource,
@@ -771,45 +832,8 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
     // the global admin setting) so the app enforces the right cap up front.
     max_extra_stops: stopSettings.maxExtraStops,
     extra_stop_charge: stopSettings.extraStopCharge,
-    packages: packages.map((pkg) => {
-      const discountedPkg = applyPlanDiscount(pkg, discount);
-      const quotedAt = new Date();
-      const isNight = porterAnchor ? false : isNightFor(discountedPkg, vehicleSlabConfig, quotedAt);
-      const combinedExtraCharge = resolvedExtraMileCharge + routeStops.length * stopSettings.extraStopCharge;
-
-      const grossBreakdown = calculateFareBreakdown(
-        pkg, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge,
-        vehicleSlabConfig, slabPricingConfig.modelMultipliers, 0, 0, extraBodyCharge, quotedAt, porterAnchor
-      );
-      const isSlabPriced = vehicleSlabConfig && pkg?.use_linear_pricing !== true;
-      const pkgForNet = isSlabPriced ? pkg : discountedPkg;
-      const netBreakdown = discount
-        ? calculateFareBreakdown(pkgForNet, distanceKm, isNight, resolvedRadiusKm, combinedExtraCharge, vehicleSlabConfig, slabPricingConfig.modelMultipliers, discount.percent, discount.maxCap, extraBodyCharge, quotedAt, porterAnchor)
-        : grossBreakdown;
-
-      return {
-        package_id: pkg.id,
-        title: pkg.title,
-        user_title: pkg.user_title || pkg.title,
-        driver_title: pkg.driver_title || pkg.title,
-        min_charge: Number(discountedPkg.min_charge),
-        per_km_charge: Number(discountedPkg.per_km_charge),
-        original_min_charge: Number(pkg.min_charge),
-        original_per_km_charge: Number(pkg.per_km_charge),
-        radius_charge: roundMoney(calculateRadiusCharge(pkg, resolvedRadiusKm)),
-        base_fare_charge: grossBreakdown.baseFare,
-        distance_charge_amount: grossBreakdown.distanceCharge,
-        service_charge_amount: grossBreakdown.serviceCharge,
-        night_charge_amount: grossBreakdown.nightCharge,
-        extra_charge_amount: grossBreakdown.extraCharge,
-        covered_charge_amount: extraBodyCharge,
-        body_charge_amount: extraBodyCharge,
-        discount_amount: round2(Math.max(0, grossBreakdown.total - netBreakdown.total)),
-        estimated_fare: netBreakdown.total,
-        is_night: isNight,
-        price_source: estimatePriceSource,
-      };
-    }),
+    ...(comparison ? { comparison } : {}),
+    packages: mappedPackages,
   };
 }
 

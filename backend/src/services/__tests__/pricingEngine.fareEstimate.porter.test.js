@@ -91,3 +91,48 @@ describe("getFareEstimate with Porter anchor", () => {
     expect(getPorterAnchor).not.toHaveBeenCalled();
   });
 });
+
+describe("getFareEstimate other-platform comparison", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 10, durationMin: 20 });
+    prisma.$queryRaw.mockResolvedValue([]);
+    prisma.app_settings.findMany.mockResolvedValue([]);
+    resolvePickupCityId.mockResolvedValue(7);
+    getPorterAnchor.mockResolvedValue(null);
+  });
+
+  it("adds a comparison vs the cheapest tier when Porter priced it and we are cheaper", async () => {
+    prisma.tbl_package.findMany.mockResolvedValue([
+      pkg,
+      { id: 7, title: "Model 1", user_title: "Super Saver", min_charge: 90, per_km_charge: 9, pickup_per_km_charge: 4, use_linear_pricing: true },
+    ]);
+    getPorterAnchor.mockResolvedValue({ fare: 300, quoted_at: "2026-11-23T13:00:00Z" });
+    const r = await getFareEstimate(base);
+    const cheapest = Math.round(Math.min(...r.packages.map((p) => p.estimated_fare)));
+    expect(cheapest).toBeLessThan(300); // we really are cheaper than the Porter quote
+    expect(r.comparison).toBeTruthy();
+    expect(r.comparison.other_platform_fare).toBe(300);
+    expect(r.comparison.our_fare).toBe(cheapest);
+    expect(r.comparison.save_amount).toBe(300 - cheapest);
+    expect(r.comparison.save_percent).toBe(Math.round(((300 - cheapest) / 300) * 100));
+    expect(r.comparison.our_title).toBe("Super Saver");
+    expect(r.comparison.quoted_at).toBe("2026-11-23T13:00:00Z");
+  });
+
+  it("no comparison when the estimate is rate-card priced (Porter off/down)", async () => {
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    getPorterAnchor.mockResolvedValue(null);
+    const r = await getFareEstimate(base);
+    expect(r.price_source).toBe("rate_card");
+    expect(r.comparison).toBeUndefined();
+  });
+
+  it("no comparison when our cheapest tier is not below the Porter quote", async () => {
+    // single package = Model 3, which equals the anchor exactly -> save 0 -> hidden
+    prisma.tbl_package.findMany.mockResolvedValue([pkg]);
+    getPorterAnchor.mockResolvedValue({ fare: 300, quoted_at: "2026-11-23T13:00:00Z" });
+    const r = await getFareEstimate(base);
+    expect(r.comparison).toBeUndefined();
+  });
+});
