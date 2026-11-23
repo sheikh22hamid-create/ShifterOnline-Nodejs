@@ -4,6 +4,9 @@ const { vehicleFamily, FAMILY_VEHICLE_ID } = require("./outsideDriverService");
 
 // Porter anchor: asks the VPS bot for Porter's live quote on a route and returns the fare for one vehicle.
 // Cache (one entry = all vehicles), in-flight dedupe, timeout and a circuit breaker keep it from slowing pricing down.
+// Negative decisions are cached for the same TTL, so the estimate and the booking made right after it see the
+// same basis: a failed fetch caches a "no quote" marker for the route (all vehicles), and a sanity-guard
+// rejection (markRouteRejected) caches one for that route + vehicle.
 const BASE_URL = () => (process.env.OUTSIDE_DRIVER_API_URL || "https://rider.shifteronline.com").replace(/\/+$/, "");
 const apiKeyHeader = () => (process.env.OUTSIDE_DRIVER_API_KEY ? { "x-api-key": process.env.OUTSIDE_DRIVER_API_KEY } : {});
 
@@ -12,12 +15,14 @@ const CACHE_MAX = 500;
 const BREAKER_THRESHOLD = 5;
 const BREAKER_MS = 5 * 60 * 1000;
 
-const cache = new Map();
+const cache = new Map(); // key -> { at, quotes, ... } or { at, failed: true }
+const rejected = new Map(); // `${key}#${vehicleId}` -> at
 const inflight = new Map();
 let stats, consecutiveFailures, breakerOpenUntil;
 
 function _resetForTests() {
   cache.clear();
+  rejected.clear();
   inflight.clear();
   stats = { lastSuccessAt: null, lastFailureAt: null, lastError: null, successes: 0, failures: 0, cacheHits: 0 };
   consecutiveFailures = 0;
@@ -28,7 +33,22 @@ _resetForTests();
 const getStats = () => ({ ...stats, breakerOpenUntil: breakerOpenUntil || null });
 
 const pt = (p) => `${Number(p.lat).toFixed(4)},${Number(p.lng).toFixed(4)}`;
-const validPoint = (p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
+const coord = (v) => (v === null || v === undefined || String(v).trim() === "" ? NaN : Number(v));
+// Rejects missing/empty coords, (0,0) (an unset GPS fix) and out-of-range lat/lng.
+function validPoint(p) {
+  if (!p || typeof p !== "object") return false;
+  const lat = coord(p.lat), lng = coord(p.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
+  return !(lat === 0 && lng === 0);
+}
+const routeKey = (cityId, pickup, drop) => `${cityId}:${pt(pickup)}>${pt(drop)}`;
+const fresh = (at, cfg, now) => now() - at < cfg.cacheMinutes * 60000;
+const remember = (map, key, value) => {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > CACHE_MAX) map.delete(map.keys().next().value);
+};
 
 function recordFailure(err, now) {
   stats.failures++;
@@ -59,47 +79,82 @@ async function fetchQuotes({ pickup, drop }, timeoutMs, fetchImpl, now) {
   }
 }
 
+const activeFor = (cfg, cityId) => {
+  const id = Number(cityId);
+  return cityId !== null && cityId !== undefined && Number.isInteger(id) && cfg.enabled === true && cfg.cityIds.includes(id);
+};
+
 async function getPorterAnchor({ cityId, category, pickup, drop, stops = [] } = {}, { fetchImpl = fetch, now = Date.now } = {}) {
   try {
     if (Array.isArray(stops) && stops.length > 0) return null;
     if (!validPoint(pickup) || !validPoint(drop)) return null;
-    if (!(await settings.isActiveForCity(cityId))) return null;
+    const cfg = await settings.getConfig();
+    if (!activeFor(cfg, cityId)) return null;
     const vehicleId = PORTER_PRICING_VEHICLE_ID[vehicleFamily(category)];
     if (!vehicleId) return null;
-    if (breakerOpenUntil) {
-      if (now() < breakerOpenUntil) return null;
-      breakerOpenUntil = 0;
-      consecutiveFailures = 0;
-    }
-    const cfg = await settings.getConfig();
-    const key = `${cityId}:${pt(pickup)}>${pt(drop)}`;
+    const key = routeKey(cityId, pickup, drop);
 
+    // Cache (positive or negative) before the breaker: a known answer is served even while Porter is down.
+    const rejectedAt = rejected.get(`${key}#${vehicleId}`);
+    if (rejectedAt !== undefined) {
+      if (fresh(rejectedAt, cfg, now)) return null;
+      rejected.delete(`${key}#${vehicleId}`);
+    }
     let entry = cache.get(key);
-    if (entry && now() - entry.at < cfg.cacheMinutes * 60000) {
+    if (entry && fresh(entry.at, cfg, now)) {
       stats.cacheHits++;
+      if (entry.failed) return null;
     } else {
       cache.delete(key);
+      if (breakerOpenUntil) {
+        if (now() < breakerOpenUntil) return null;
+        breakerOpenUntil = 0;
+        consecutiveFailures = 0;
+      }
       let p = inflight.get(key);
       if (!p) {
-        p = fetchQuotes({ pickup, drop }, cfg.timeoutMs, fetchImpl, now).finally(() => inflight.delete(key));
+        p = fetchQuotes({ pickup, drop }, cfg.timeoutMs, fetchImpl, now)
+          .then((res) => {
+            remember(cache, key, res ? { at: now(), ...res } : { at: now(), failed: true });
+            return res;
+          })
+          .finally(() => inflight.delete(key));
         inflight.set(key, p);
       }
       const res = await p;
       if (!res) return null;
-      entry = { at: now(), ...res };
-      if (!cache.has(key)) {
-        cache.set(key, entry);
-        if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
-      }
+      entry = cache.get(key) || { at: now(), ...res };
     }
 
     const q = entry.quotes.find((x) => Number(x.porter_vehicle_id) === vehicleId);
     const fare = Number(q?.fare);
     if (!q || !Number.isFinite(fare) || fare <= 0) return null;
-    return { fare, porter_distance_km: entry.porter_distance_km, porter_vehicle_id: vehicleId, quoted_at: entry.quoted_at };
+    const km = entry.porter_distance_km === null || entry.porter_distance_km === undefined || entry.porter_distance_km === "" ? NaN : Number(entry.porter_distance_km);
+    return {
+      fare,
+      porter_distance_km: Number.isFinite(km) ? km : null,
+      porter_vehicle_id: vehicleId,
+      quoted_at: typeof entry.quoted_at === "string" ? entry.quoted_at : null,
+    };
   } catch (err) {
     logger.warn(`porterQuoteService.getPorterAnchor: ${err.message}`);
     return null;
+  }
+}
+
+/**
+ * The sanity guard (pricingEngine) rejected this route's anchor for this vehicle: answer "no quote" for it
+ * until the cache TTL passes, so a booking right after a rejected estimate is priced the same way (rate card).
+ * Never throws; bad input is ignored. Not a breaker failure.
+ */
+function markRouteRejected({ cityId, pickup, drop, category } = {}, { now = Date.now } = {}) {
+  try {
+    if (cityId === null || cityId === undefined || !validPoint(pickup) || !validPoint(drop)) return;
+    const vehicleId = PORTER_PRICING_VEHICLE_ID[vehicleFamily(category)];
+    if (!vehicleId) return;
+    remember(rejected, `${routeKey(cityId, pickup, drop)}#${vehicleId}`, now());
+  } catch (err) {
+    logger.warn(`porterQuoteService.markRouteRejected: ${err.message}`);
   }
 }
 
@@ -171,4 +226,4 @@ async function anchorForNewRoute(order, { pickup, drop, stops = [], newDistanceK
   }
 }
 
-module.exports = { getPorterAnchor, withinSanityRange, anchorFromOrder, anchorForNewRoute, getStats, _resetForTests, PORTER_PRICING_VEHICLE_ID };
+module.exports = { getPorterAnchor, markRouteRejected, withinSanityRange, anchorFromOrder, anchorForNewRoute, getStats, _resetForTests, PORTER_PRICING_VEHICLE_ID };

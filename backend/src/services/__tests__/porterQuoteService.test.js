@@ -9,6 +9,8 @@ const D = { lat: 22.75, lng: 75.9 };
 const okBody = (quotes = [{ porter_vehicle_id: 91, fare: 412.6 }]) => ({ ok: true, quotes, porter_distance_km: 6.2, quoted_at: "2026-11-22T10:00:00Z" });
 const okFetch = (body = okBody()) => jest.fn().mockResolvedValue({ ok: true, json: async () => body });
 const args = (over = {}) => ({ cityId: 7, category: "3 Wheeler", pickup: P, drop: D, stops: [], ...over });
+// A distinct route per i (failed fetches are negative-cached per route, so repeats of one route make no fetch).
+const route = (i) => args({ pickup: { lat: 22 + i / 100, lng: 75.5 } });
 
 beforeEach(() => {
   svc._resetForTests();
@@ -70,9 +72,9 @@ describe("getPorterAnchor", () => {
     const rej = jest.fn().mockRejectedValue(new Error("boom"));
     const bad = okFetch({ ok: false });
     const abort = jest.fn().mockRejectedValue(Object.assign(new Error("timed out"), { name: "AbortError" }));
-    expect(await svc.getPorterAnchor(args(), { fetchImpl: rej })).toBeNull();
-    expect(await svc.getPorterAnchor(args(), { fetchImpl: bad })).toBeNull();
-    expect(await svc.getPorterAnchor(args(), { fetchImpl: abort })).toBeNull();
+    expect(await svc.getPorterAnchor(route(1), { fetchImpl: rej })).toBeNull();
+    expect(await svc.getPorterAnchor(route(2), { fetchImpl: bad })).toBeNull();
+    expect(await svc.getPorterAnchor(route(3), { fetchImpl: abort })).toBeNull();
     expect(svc.getStats().failures).toBe(3);
     expect(svc.getStats().lastError).toBeTruthy();
   });
@@ -80,9 +82,9 @@ describe("getPorterAnchor", () => {
     const rej = jest.fn().mockRejectedValue(new Error("boom"));
     let t = 1000;
     const now = () => t;
-    for (let i = 0; i < 5; i++) await svc.getPorterAnchor(args(), { fetchImpl: rej, now });
+    for (let i = 0; i < 5; i++) await svc.getPorterAnchor(route(i), { fetchImpl: rej, now });
     expect(rej).toHaveBeenCalledTimes(5);
-    expect(await svc.getPorterAnchor(args(), { fetchImpl: rej, now })).toBeNull();
+    expect(await svc.getPorterAnchor(route(9), { fetchImpl: rej, now })).toBeNull();
     expect(rej).toHaveBeenCalledTimes(5);
     t += 5 * 60000 + 1;
     const f = okFetch();
@@ -91,10 +93,95 @@ describe("getPorterAnchor", () => {
   });
   test("success resets consecutive failures", async () => {
     const rej = jest.fn().mockRejectedValue(new Error("boom"));
-    for (let i = 0; i < 4; i++) await svc.getPorterAnchor(args(), { fetchImpl: rej });
+    for (let i = 0; i < 4; i++) await svc.getPorterAnchor(route(i), { fetchImpl: rej });
     await svc.getPorterAnchor(args({ pickup: { lat: 1, lng: 1 } }), { fetchImpl: okFetch() });
-    for (let i = 0; i < 4; i++) await svc.getPorterAnchor(args(), { fetchImpl: rej });
+    for (let i = 10; i < 14; i++) await svc.getPorterAnchor(route(i), { fetchImpl: rej });
     expect(rej).toHaveBeenCalledTimes(8);
+  });
+  test("cache hit is served while the breaker is open", async () => {
+    let t = 1000;
+    const now = () => t;
+    const f = okFetch();
+    expect((await svc.getPorterAnchor(args(), { fetchImpl: f, now })).fare).toBe(412.6);
+    const rej = jest.fn().mockRejectedValue(new Error("boom"));
+    for (let i = 0; i < 5; i++) await svc.getPorterAnchor(route(i), { fetchImpl: rej, now });
+    expect(svc.getStats().breakerOpenUntil).toBeGreaterThan(t);
+    expect((await svc.getPorterAnchor(args(), { fetchImpl: f, now })).fare).toBe(412.6);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  test("failed fetch is negative-cached: a second call within the TTL makes no fetch and returns null", async () => {
+    let t = 1000;
+    const now = () => t;
+    const rej = jest.fn().mockRejectedValue(new Error("boom"));
+    expect(await svc.getPorterAnchor(args(), { fetchImpl: rej, now })).toBeNull();
+    t += 60000;
+    const f = okFetch();
+    expect(await svc.getPorterAnchor(args(), { fetchImpl: f, now })).toBeNull();
+    expect(await svc.getPorterAnchor(args({ category: "Mini 3W" }), { fetchImpl: f, now })).toBeNull();
+    expect(f).not.toHaveBeenCalled();
+    expect(svc.getStats().failures).toBe(1);
+  });
+  test("negative entries expire after the TTL", async () => {
+    let t = 1000;
+    const now = () => t;
+    await svc.getPorterAnchor(args(), { fetchImpl: jest.fn().mockRejectedValue(new Error("boom")), now });
+    t += 10 * 60000 + 1;
+    const f = okFetch();
+    expect((await svc.getPorterAnchor(args(), { fetchImpl: f, now })).fare).toBe(412.6);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+  test("markRouteRejected: later calls for the same route+vehicle return null without fetch, other vehicles unaffected", async () => {
+    let t = 1000;
+    const now = () => t;
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 412.6 }, { porter_vehicle_id: 1139, fare: 300 }]));
+    expect((await svc.getPorterAnchor(args(), { fetchImpl: f, now })).fare).toBe(412.6);
+    svc.markRouteRejected({ cityId: 7, pickup: P, drop: D, category: "3 Wheeler" }, { now });
+    expect(await svc.getPorterAnchor(args(), { fetchImpl: f, now })).toBeNull();
+    expect((await svc.getPorterAnchor(args({ category: "Mini 3W" }), { fetchImpl: f, now })).fare).toBe(300);
+    expect(f).toHaveBeenCalledTimes(1);
+    // a rejection with no cached quote also makes no fetch
+    const g = okFetch();
+    svc.markRouteRejected({ cityId: 7, pickup: { lat: 1, lng: 1 }, drop: D, category: "3 Wheeler" }, { now });
+    expect(await svc.getPorterAnchor(args({ pickup: { lat: 1, lng: 1 } }), { fetchImpl: g, now })).toBeNull();
+    expect(g).not.toHaveBeenCalled();
+    // expires after the TTL
+    t += 10 * 60000 + 1;
+    expect((await svc.getPorterAnchor(args(), { fetchImpl: f, now })).fare).toBe(412.6);
+  });
+  test("markRouteRejected ignores bad input without throwing", () => {
+    expect(() => svc.markRouteRejected({})).not.toThrow();
+    expect(() => svc.markRouteRejected({ cityId: 7, pickup: null, drop: D, category: "3 Wheeler" })).not.toThrow();
+    expect(() => svc.markRouteRejected()).not.toThrow();
+  });
+  test("reads the config once per call (no isActiveForCity round trip)", async () => {
+    settings.getConfig.mockClear();
+    settings.isActiveForCity.mockClear();
+    await svc.getPorterAnchor(args(), { fetchImpl: okFetch() });
+    expect(settings.getConfig).toHaveBeenCalledTimes(1);
+    expect(settings.isActiveForCity).not.toHaveBeenCalled();
+  });
+  test("normalises porter_distance_km and quoted_at (never undefined)", async () => {
+    const f = okFetch({ ok: true, quotes: [{ porter_vehicle_id: 91, fare: 400 }] });
+    expect(await svc.getPorterAnchor(args(), { fetchImpl: f })).toEqual({ fare: 400, porter_distance_km: null, porter_vehicle_id: 91, quoted_at: null });
+    svc._resetForTests();
+    const g = okFetch({ ok: true, quotes: [{ porter_vehicle_id: 91, fare: 400 }], porter_distance_km: "6.5", quoted_at: 12345 });
+    expect(await svc.getPorterAnchor(args(), { fetchImpl: g })).toEqual({ fare: 400, porter_distance_km: 6.5, porter_vehicle_id: 91, quoted_at: null });
+    svc._resetForTests();
+    const h = okFetch({ ok: true, quotes: [{ porter_vehicle_id: 91, fare: 400 }], porter_distance_km: "abc", quoted_at: "2026-11-22T10:00:00Z" });
+    expect(await svc.getPorterAnchor(args(), { fetchImpl: h })).toEqual({ fare: 400, porter_distance_km: null, porter_vehicle_id: 91, quoted_at: "2026-11-22T10:00:00Z" });
+  });
+  test.each([
+    ["null", null],
+    ["empty strings", { lat: "", lng: "" }],
+    ["null coords", { lat: null, lng: null }],
+    ["(0,0)", { lat: 0, lng: 0 }],
+    ["lat > 90", { lat: 91, lng: 75 }],
+    ["lng < -180", { lat: 22, lng: -181 }],
+  ])("invalid point (%s) -> null, no fetch", async (_n, p) => {
+    const f = okFetch();
+    expect(await svc.getPorterAnchor(args({ pickup: p }), { fetchImpl: f })).toBeNull();
+    expect(await svc.getPorterAnchor(args({ drop: p }), { fetchImpl: f })).toBeNull();
+    expect(f).not.toHaveBeenCalled();
   });
 });
 

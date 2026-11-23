@@ -158,12 +158,18 @@ function timeBandChargeFor(pkg, vehicleConfig, multipliers, now) {
 function porterModelFactor(pkg, modelMultipliers) {
   const models = (modelMultipliers || DEFAULT_MODEL_MULTIPLIERS).models || [];
   const pkgTitle = String(pkg?.title || "").toLowerCase();
-  const modelMatch = models.find((m) => pkgTitle.includes(m.model.toLowerCase()));
+  const name = (m) => String(m?.model || "").toLowerCase();
+  const modelMatch = models.find((m) => name(m) && pkgTitle.includes(name(m)));
   if (!modelMatch) return 1;
-  const m3 = models.find((m) => m.model === "Model 3");
+  const m3 = models.find((m) => name(m).includes("model 3"));
   const offset = Number(modelMatch.offset_percent) || 0;
   const m3Offset = m3 ? Number(m3.offset_percent) || 0 : 0;
-  return (1 + offset / 100) / (1 + m3Offset / 100);
+  const numerator = 1 + offset / 100;
+  const denominator = 1 + m3Offset / 100;
+  // A misconfigured offset (<= -100%, non-finite) must never zero, flip or blow up the fare: use Porter as-is.
+  if (!Number.isFinite(numerator) || numerator <= 0 || !Number.isFinite(denominator) || denominator <= 0) return 1;
+  const factor = numerator / denominator;
+  return Number.isFinite(factor) && factor > 0 ? factor : 1;
 }
 
 function hasPorterAnchor(porterAnchor) {
@@ -600,10 +606,19 @@ async function priceForPackageId(packageId, distanceKm, radiusRangeKm = 1, extra
  * porterQuoteService is required lazily (it pulls in outsideDriverService, which can require this module back);
  * the require sits inside the try so a module-load failure also degrades to the rate card.
  */
-async function fetchPorterAnchor({ cityId = null, catId, plat, plong, dlat, dlong, stops = [] }) {
+async function fetchPorterAnchor(args) {
+  return (await fetchPorterAnchorWithRoute(args)).anchor;
+}
+
+/** fetchPorterAnchor plus the route it asked about (for markRouteRejected); route is null when no quote was asked. */
+async function fetchPorterAnchorWithRoute({ cityId = null, catId, plat, plong, dlat, dlong, stops = [] }) {
+  const none = { anchor: null, route: null };
   // Stops: no Porter call (waypoint format unverified).
-  if (Array.isArray(stops) && stops.length) return null;
+  if (Array.isArray(stops) && stops.length) return none;
   try {
+    // Switch first: with Porter pricing off (or no city listed) this costs one in-memory config read and no queries.
+    const cfg = await require("./porterLiveSettings").getConfig();
+    if (!cfg || cfg.enabled !== true || !Array.isArray(cfg.cityIds) || cfg.cityIds.length === 0) return none;
     const { getPorterAnchor } = require("./porterQuoteService");
     let resolvedCityId = null;
     try {
@@ -612,16 +627,27 @@ async function fetchPorterAnchor({ cityId = null, catId, plat, plong, dlat, dlon
       resolvedCityId = null;
     }
     const effectiveCityId = resolvedCityId || cityId || null;
-    if (!effectiveCityId) return null;
-    return (await getPorterAnchor({
+    if (!effectiveCityId) return none;
+    const route = {
       cityId: effectiveCityId,
-      category: await categoryName(catId),
       pickup: { lat: Number(plat), lng: Number(plong) },
       drop: { lat: Number(dlat), lng: Number(dlong) },
-      stops: [],
-    })) || null;
+      category: await categoryName(catId),
+    };
+    const anchor = (await getPorterAnchor({ cityId: route.cityId, category: route.category, pickup: route.pickup, drop: route.drop, stops: [] })) || null;
+    return { anchor, route };
   } catch (_) {
-    return null;
+    return none;
+  }
+}
+
+/** The sanity guard dropped this route's anchor: negative-cache it so the booking right after sees the same basis. */
+function markPorterRouteRejected(route) {
+  if (!route) return;
+  try {
+    require("./porterQuoteService").markRouteRejected(route);
+  } catch (_) {
+    // best effort: the next call just asks Porter again and re-runs the guard
   }
 }
 
@@ -642,9 +668,10 @@ async function porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig = n
 
 /** Fetch + guard in one call (used by order creation). Resolves to the anchor or null. */
 async function resolvePorterAnchor({ cityId = null, catId, plat, plong, dlat, dlong, stops = [], pkg, distanceKm, slabConfig = null, modelMultipliers = null, extraMileCharge = 0, coveredBodyCharge = 0, discount = null }) {
-  const anchor = await fetchPorterAnchor({ cityId, catId, plat, plong, dlat, dlong, stops });
+  const { anchor, route } = await fetchPorterAnchorWithRoute({ cityId, catId, plat, plong, dlat, dlong, stops });
   if (!anchor) return null;
   const ok = await porterAnchorPassesGuard({ anchor, pkg, distanceKm, slabConfig, modelMultipliers, extraMileCharge, coveredBodyCharge, discount });
+  if (!ok) markPorterRouteRejected(route);
   return ok ? anchor : null;
 }
 
@@ -676,13 +703,13 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const cleanBodyType = ["open", "covered", "half"].includes(String(body_type || "").toLowerCase())
     ? String(body_type).toLowerCase()
     : "any";
-  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge, rawPorterAnchor] = await Promise.all([
+  const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge, porterFetch] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
     getPackagesForCategory(cat_id),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
     getBodyTypeCharge(cleanBodyType),
-    fetchPorterAnchor({ cityId, catId: cat_id, plat, plong, dlat, dlong, stops: routeStops }),
+    fetchPorterAnchorWithRoute({ cityId, catId: cat_id, plat, plong, dlat, dlong, stops: routeStops }),
   ]);
 
   const resolvedRadiusKm = Number(radiusRangeKm) > 0 ? Number(radiusRangeKm) : 1;
@@ -690,14 +717,17 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
   const vehicleSlabConfig = await resolveVehicleSlabConfig(slabPricingConfig.slabRates, cat_id);
 
   // Sanity guard: if the Porter-priced first package is wildly off its rate-card price, drop the anchor for all packages.
-  let porterAnchor = rawPorterAnchor || null;
+  let porterAnchor = porterFetch.anchor || null;
   if (porterAnchor && packages.length) {
     const ok = await porterAnchorPassesGuard({
       anchor: porterAnchor, pkg: packages[0], distanceKm, slabConfig: vehicleSlabConfig,
       modelMultipliers: slabPricingConfig.modelMultipliers, extraMileCharge: resolvedExtraMileCharge,
       coveredBodyCharge: extraBodyCharge, discount,
     });
-    if (!ok) porterAnchor = null;
+    if (!ok) {
+      porterAnchor = null;
+      markPorterRouteRejected(porterFetch.route);
+    }
   }
   const estimatePriceSource = porterAnchor ? "porter" : "rate_card";
 

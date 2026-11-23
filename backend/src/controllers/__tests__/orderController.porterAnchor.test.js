@@ -8,6 +8,8 @@ jest.mock("../../config/db", () => ({
   tbl_referral_setting: { findFirst: jest.fn() },
   $queryRaw: jest.fn().mockResolvedValue([]),
 }));
+// Porter live pricing switched on (fetchPorterAnchor returns null before any lookup when it is off).
+jest.mock("../../services/porterLiveSettings", () => ({ getConfig: async () => ({ enabled: true, cityIds: [5, 7, 13], timeoutMs: 3000, cacheMinutes: 10 }) }));
 jest.mock("../../services/dispatchManager", () => ({ startDispatch: jest.fn().mockResolvedValue(undefined) }));
 jest.mock("../../services/porterQuoteService", () => ({
   getPorterAnchor: jest.fn(),

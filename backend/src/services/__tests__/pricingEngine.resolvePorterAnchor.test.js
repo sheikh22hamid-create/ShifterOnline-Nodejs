@@ -13,6 +13,8 @@ jest.mock("../porterQuoteService", () => ({
   getPorterAnchor: jest.fn(),
   withinSanityRange: jest.requireActual("../porterQuoteService").withinSanityRange,
 }));
+// Porter live pricing switched on (fetchPorterAnchor returns null before any lookup when it is off).
+jest.mock("../porterLiveSettings", () => ({ getConfig: async () => ({ enabled: true, cityIds: [5, 7, 13], timeoutMs: 3000, cacheMinutes: 10 }) }));
 jest.mock("../pickupCityService", () => ({ resolvePickupCityId: jest.fn() }));
 
 const { getPorterAnchor } = require("../porterQuoteService");
