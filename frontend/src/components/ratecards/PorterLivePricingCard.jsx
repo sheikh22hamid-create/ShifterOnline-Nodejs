@@ -134,11 +134,13 @@ export default function PorterLivePricingCard({ categories = [] }) {
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <div>
           <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="pl_timeout">Porter timeout (ms)</label>
-          <input id="pl_timeout" type="number" min="0" step="100" value={form.timeoutMs} onChange={(e) => setForm((f) => ({ ...f, timeoutMs: e.target.value }))} disabled={disabled} className={inputClass} style={inputStyle} />
+          <input id="pl_timeout" type="number" min="500" max="4000" step="100" value={form.timeoutMs} onChange={(e) => setForm((f) => ({ ...f, timeoutMs: e.target.value }))} disabled={disabled} className={inputClass} style={inputStyle} />
+          <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>500 to 4000 ms</p>
         </div>
         <div>
           <label className="text-xs font-semibold" style={{ color: 'var(--ink)' }} htmlFor="pl_cache">Quote cache (minutes)</label>
-          <input id="pl_cache" type="number" min="0" step="1" value={form.cacheMinutes} onChange={(e) => setForm((f) => ({ ...f, cacheMinutes: e.target.value }))} disabled={disabled} className={inputClass} style={inputStyle} />
+          <input id="pl_cache" type="number" min="1" max="60" step="1" value={form.cacheMinutes} onChange={(e) => setForm((f) => ({ ...f, cacheMinutes: e.target.value }))} disabled={disabled} className={inputClass} style={inputStyle} />
+          <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>1 to 60 minutes</p>
         </div>
       </div>
 

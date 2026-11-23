@@ -4,7 +4,10 @@ jest.mock("../../utils/logger", () => ({ info: jest.fn(), warn: jest.fn(), error
 const prisma = require("../../config/db");
 const settings = require("../porterLiveSettings");
 
-beforeEach(() => jest.resetAllMocks());
+beforeEach(() => {
+  jest.resetAllMocks();
+  settings._resetCacheForTests();
+});
 const row = (v) => ({ setting_key: "porter_live_pricing", setting_value: typeof v === "string" ? v : JSON.stringify(v) });
 
 describe("getConfig", () => {
@@ -15,7 +18,8 @@ describe("getConfig", () => {
   });
   it("reads values and clamps timeout/cache", async () => {
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], timeout_ms: 99999, cache_minutes: 500 }));
-    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 10000, cacheMinutes: 60 });
+    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 4000, cacheMinutes: 60 });
+    settings._resetCacheForTests();
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7], timeout_ms: 100, cache_minutes: 0 }));
     expect(await settings.getConfig()).toMatchObject({ timeoutMs: 500, cacheMinutes: 1 });
   });
@@ -35,6 +39,7 @@ describe("isActiveForCity", () => {
     expect(await settings.isActiveForCity(7)).toBe(true);
     expect(await settings.isActiveForCity(8)).toBe(false);
     expect(await settings.isActiveForCity(null)).toBe(false);
+    settings._resetCacheForTests();
     prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: false, city_ids: [7] }));
     expect(await settings.isActiveForCity(7)).toBe(false);
   });
@@ -46,6 +51,12 @@ describe("saveConfig", () => {
     await expect(settings.saveConfig({ enabled: true, cityIds: [1], timeoutMs: "abc", cacheMinutes: 10 })).rejects.toThrow();
     expect(prisma.app_settings.upsert).not.toHaveBeenCalled();
   });
+  it("rejects a timeout above 4000 ms", async () => {
+    await expect(settings.saveConfig({ enabled: true, cityIds: [1], timeoutMs: 4001, cacheMinutes: 10 })).rejects.toThrow(/4000/);
+    expect(prisma.app_settings.upsert).not.toHaveBeenCalled();
+    prisma.app_settings.upsert.mockResolvedValue({});
+    await expect(settings.saveConfig({ enabled: true, cityIds: [1], timeoutMs: 4000, cacheMinutes: 10 })).resolves.toMatchObject({ timeoutMs: 4000 });
+  });
   it("upserts snake_case JSON", async () => {
     prisma.app_settings.upsert.mockResolvedValue({});
     const cfg = await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
@@ -54,5 +65,43 @@ describe("saveConfig", () => {
     const arg = prisma.app_settings.upsert.mock.calls[0][0];
     expect(arg.where).toEqual({ setting_key: "porter_live_pricing" });
     expect(JSON.parse(arg.create.setting_value)).toEqual({ enabled: true, city_ids: [7], timeout_ms: 3000, cache_minutes: 10 });
+  });
+});
+
+describe("getConfig cache", () => {
+  it("serves the parsed config from memory for 30 s, then reloads", async () => {
+    const now = jest.spyOn(Date, "now");
+    let t = 1_000_000;
+    now.mockImplementation(() => t);
+    try {
+      prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7] }));
+      expect((await settings.getConfig()).enabled).toBe(true);
+      prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: false, city_ids: [7] }));
+      t += 29_000;
+      expect((await settings.getConfig()).enabled).toBe(true);
+      expect(await settings.isActiveForCity(7)).toBe(true);
+      expect(prisma.app_settings.findFirst).toHaveBeenCalledTimes(1);
+      t += 2_000;
+      expect((await settings.getConfig()).enabled).toBe(false);
+      expect(prisma.app_settings.findFirst).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+  it("returns a copy, so callers cannot mutate the cached config", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7] }));
+    const a = await settings.getConfig();
+    a.cityIds.push(99);
+    a.enabled = false;
+    expect(await settings.getConfig()).toEqual({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+  });
+  it("saveConfig invalidates the cache", async () => {
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: false, city_ids: [] }));
+    expect((await settings.getConfig()).enabled).toBe(false);
+    prisma.app_settings.upsert.mockResolvedValue({});
+    await settings.saveConfig({ enabled: true, cityIds: [7], timeoutMs: 3000, cacheMinutes: 10 });
+    prisma.app_settings.findFirst.mockResolvedValue(row({ enabled: true, city_ids: [7] }));
+    expect((await settings.getConfig()).enabled).toBe(true);
+    expect(prisma.app_settings.findFirst).toHaveBeenCalledTimes(2);
   });
 });
