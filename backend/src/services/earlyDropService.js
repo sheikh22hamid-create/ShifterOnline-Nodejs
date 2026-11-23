@@ -7,6 +7,7 @@ const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const { resolveSideTitle } = require("./orderAreaTitles");
+const { newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
 
 // Early Drop: the customer asks to be dropped before the booked destination.
 // When the driver taps Complete while still this far from the booked drop, the
@@ -89,12 +90,17 @@ async function computeEarlyDropFare(order, point) {
     plat: order.plat, plong: order.plong, stops, dlat: point.lat, dlong: point.lng,
   });
   const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
+  // Porter-anchored order: re-anchor on the shortened route (null = rate-card order).
+  const porterAnchor = await newRouteAnchor(order, {
+    pickup: { lat: order.plat, lng: order.plong }, drop: point, stops, newDistanceKm,
+  });
   const priced = await pricingEngine.priceForPackageId(
     Number(order.delivery_type) || 1,
     newDistanceKm,
     radiusKm,
     Number(order.extra_mile_charge) || 0,
-    Number(order.uid)
+    Number(order.uid),
+    ...anchorArgs(porterAnchor)
   );
   const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
   const repriced = Math.round(priced.fare);
@@ -106,6 +112,8 @@ async function computeEarlyDropFare(order, point) {
     commission: keepOld ? Number(order.commission) : priced.commission,
     oldDistance: round2(Number(order.distance) || 0),
     newDistance: round2(newDistanceKm),
+    // The stored distance becomes the new route's, so the anchor follows it even when the old fare is kept.
+    ...(porterAnchor ? { porterAnchor } : {}),
   };
 }
 
@@ -179,6 +187,7 @@ async function applyEarlyDrop(order, riderId, point, distanceM) {
         total_dcharge: fare.newFare,
         driver_earning: fare.driverEarning,
         commission: fare.commission,
+        ...(fare.porterAnchor ? { porter_quote: fare.porterAnchor } : {}),
       },
     });
     // Order #468: 326 points were redeemed at the Rs652 booking fare (50% cap);

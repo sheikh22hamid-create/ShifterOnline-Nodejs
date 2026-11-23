@@ -127,4 +127,47 @@ function anchorFromOrder(order) {
   }
 }
 
-module.exports = { getPorterAnchor, withinSanityRange, anchorFromOrder, getStats, _resetForTests, PORTER_PRICING_VEHICLE_ID };
+/**
+ * New anchor for an order whose route changed (drop/pickup change, stop added, early drop, OTP-point move),
+ * so it stays on the Porter level instead of falling back to the rate card.
+ * - no anchor on the order -> null (order stays rate card)
+ * - live Porter quote for the new route (city + category known, no stops, passes the sanity guard) -> that quote
+ * - else the old anchor scaled by the rate card: old.fare x rateCard(new km) / rateCard(old km), scaled:true
+ * - nothing to scale by (old distance 0, rate card <= 0, error) -> a copy of the old anchor
+ * pricingEngine is required lazily (it requires this module lazily too); tests pass deps.priceForPackageId.
+ */
+async function anchorForNewRoute(order, { pickup, drop, stops = [], newDistanceKm } = {}, deps = {}) {
+  const old = anchorFromOrder(order);
+  if (!old) return null;
+  const { fetchImpl = fetch, now = Date.now } = deps;
+  try {
+    const price = deps.priceForPackageId || require("./pricingEngine").priceForPackageId;
+    const packageId = Number(order.delivery_type) || 1;
+    const newKm = Number(newDistanceKm);
+    const oldKm = Number(order.distance);
+    const rateCard = async (d) => Number((await price(packageId, d, 1, 0, null))?.fare);
+
+    const category = order.category || null;
+    if (category && Number.isFinite(newKm) && newKm > 0) {
+      const live = await getPorterAnchor({ cityId: order.city_id, category, pickup, drop, stops }, { fetchImpl, now });
+      if (live) {
+        const [withLive, plain] = await Promise.all([
+          price(packageId, newKm, 1, 0, null, null, null, live).then((r) => Number(r?.fare)),
+          rateCard(newKm),
+        ]);
+        if (withinSanityRange(withLive, plain)) return live;
+      }
+    }
+
+    if (!(oldKm > 0) || !Number.isFinite(newKm) || newKm <= 0) return { ...old };
+    const [oldCard, newCard] = await Promise.all([rateCard(oldKm), rateCard(newKm)]);
+    if (!(oldCard > 0) || !(newCard > 0)) return { ...old };
+    const fare = Math.round(((old.fare * newCard) / oldCard) * 100) / 100;
+    return { ...old, fare, quoted_at: new Date(now()).toISOString(), scaled: true };
+  } catch (err) {
+    logger.warn(`porterQuoteService.anchorForNewRoute: ${err.message}`);
+    return { ...old };
+  }
+}
+
+module.exports = { getPorterAnchor, withinSanityRange, anchorFromOrder, anchorForNewRoute, getStats, _resetForTests, PORTER_PRICING_VEHICLE_ID };

@@ -12,6 +12,7 @@ const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
 const { resolveSideTitle } = require("./orderAreaTitles");
+const { newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
 
 // Pickup can move while the order is still pending (0), while the driver is
 // en route to it (1), or even after the driver has already arrived and is
@@ -36,9 +37,10 @@ async function computeNewRouteDistance(order, newPlat, newPlong) {
     orderBy: { sequence: "asc" },
   });
 
-  return computeRouteDistanceKm({
+  const newDistanceKm = await computeRouteDistanceKm({
     plat: newPlat, plong: newPlong, stops, dlat: order.dlat, dlong: order.dlong,
   });
+  return { newDistanceKm, stops };
 }
 
 function assertUsable({ orderId, uid, newPlat, newPlong, newPaddress }) {
@@ -84,7 +86,11 @@ async function previewPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
   assertOrderEditable(order, numericUid);
   await serviceAreaService.assertOrderChangeAllowed(order, { kind: "pickup", lat: newPlat, lng: newPlong });
 
-  const newDistanceKm = await computeNewRouteDistance(order, newPlat, newPlong);
+  const { newDistanceKm, stops } = await computeNewRouteDistance(order, newPlat, newPlong);
+  // Porter-anchored order: re-anchor on the new route (null = rate-card order, left as is).
+  const porterAnchor = await newRouteAnchor(order, {
+    pickup: { lat: newPlat, lng: newPlong }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
+  });
   const radiusKm = await getDriverRealDistanceKm(order.rid, newPlat, newPlong);
   const packageId = Number(order.delivery_type) || 1;
 
@@ -93,7 +99,8 @@ async function previewPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
     newDistanceKm,
     radiusKm,
     Number(order.extra_mile_charge) || 0,
-    numericUid
+    numericUid,
+    ...anchorArgs(porterAnchor)
   );
 
   const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
@@ -138,7 +145,11 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
     assertOrderEditable(order, numericUid);
     await serviceAreaService.assertOrderChangeAllowed(order, { kind: "pickup", lat: newPlat, lng: newPlong });
 
-    const newDistanceKm = await computeNewRouteDistance(order, newPlat, newPlong);
+    const { newDistanceKm, stops } = await computeNewRouteDistance(order, newPlat, newPlong);
+    // Porter-anchored order: re-anchor on the new route (null = rate-card order, left as is).
+    const porterAnchor = await newRouteAnchor(order, {
+      pickup: { lat: newPlat, lng: newPlong }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
+    });
     const radiusKm = await getDriverRealDistanceKm(order.rid, newPlat, newPlong);
     const packageId = Number(order.delivery_type) || 1;
 
@@ -147,7 +158,8 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
       newDistanceKm,
       radiusKm,
       Number(order.extra_mile_charge) || 0,
-      numericUid
+      numericUid,
+      ...anchorArgs(porterAnchor)
     );
 
     const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
@@ -175,6 +187,7 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
       total_dcharge: newFare,
       driver_earning: driverEarning,
       commission: commission,
+      ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
     };
 
     if (wasWaitingAtPickup) {

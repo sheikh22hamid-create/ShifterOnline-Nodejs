@@ -313,6 +313,13 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
             const packageId = Number(order.delivery_type) || 1;
             const extraMileCharge = Number(order.extra_mile_charge) || 0;
             const pricingEngine = require('./pricingEngine');
+            // Porter-anchored order: old anchor prices the old route, a re-anchored one the new route
+            // (null on both for a rate-card order, which keeps the original 5-arg calls).
+            const { anchorOf, newRouteAnchor, anchorArgs } = require('./orderPorterAnchor');
+            const oldAnchor = anchorOf(order);
+            const porterAnchor = await newRouteAnchor(order, {
+              pickup: { lat, lng }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
+            });
             // The radius (driver-to-pickup) charge was fixed at accept time off
             // the driver's real distance THEN. Repricing it off the driver's
             // live position here would zero it (they're standing at the OTP
@@ -321,9 +328,9 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
             // current d_charge: whatever sits above a zero-radius fare at the
             // order's current distance is carried over onto the new route's
             // zero-radius fare unchanged.
-            const zeroRadiusOld = await pricingEngine.priceForPackageId(packageId, Number(order.distance) || 0, 1, extraMileCharge, order.uid);
+            const zeroRadiusOld = await pricingEngine.priceForPackageId(packageId, Number(order.distance) || 0, 1, extraMileCharge, order.uid, ...anchorArgs(oldAnchor));
             const impliedRadiusAmount = Math.max(0, (Number(order.d_charge) || 0) - zeroRadiusOld.fare);
-            const zeroRadiusNew = await pricingEngine.priceForPackageId(packageId, newDistanceKm, 1, extraMileCharge, order.uid);
+            const zeroRadiusNew = await pricingEngine.priceForPackageId(packageId, newDistanceKm, 1, extraMileCharge, order.uid, ...anchorArgs(porterAnchor));
             const finalDCharge = Math.round(zeroRadiusNew.fare + impliedRadiusAmount);
             // Same conventions as tripLifecycle.finalizeAcceptedOrder:
             // driver_earning is the gross fare (commission is clawed back at
@@ -336,6 +343,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
               plat: String(lat), plong: String(lng), distance: Math.round(newDistanceKm * 100) / 100,
               d_charge: finalDCharge, total_dcharge: finalDCharge,
               driver_earning: finalDCharge, commission: existingCommissionPercent, pickup_otp_mismatch_flag: true,
+              ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
             } }));
             await reconcileRideDiscountToFare(orderId, finalDCharge, tx);
           }

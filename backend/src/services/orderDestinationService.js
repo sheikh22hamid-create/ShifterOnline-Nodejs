@@ -9,6 +9,7 @@ const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
 const { resolveSideTitle } = require("./orderAreaTitles");
+const { newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
 
 function isValidCoord(val, min, max) {
   const num = Number(val);
@@ -21,7 +22,7 @@ function sanitizeAddress(addr) {
 }
 
 /**
- * Calculates road distance for an order given a new drop location.
+ * Calculates road distance for an order given a new drop location (and returns the stops it routed through).
  */
 async function computeNewRouteDistance(order, newDlat, newDlong) {
   const stops = await prisma.pkg_order_stops.findMany({
@@ -29,9 +30,10 @@ async function computeNewRouteDistance(order, newDlat, newDlong) {
     orderBy: { sequence: "asc" },
   });
 
-  return computeRouteDistanceKm({
+  const newDistanceKm = await computeRouteDistanceKm({
     plat: order.plat, plong: order.plong, stops, dlat: newDlat, dlong: newDlong,
   });
+  return { newDistanceKm, stops };
 }
 
 /**
@@ -73,7 +75,11 @@ async function previewDestinationChange({ uid, orderId, newDlat, newDlong, newDa
   }
   await serviceAreaService.assertOrderChangeAllowed(order, { kind: "drop", lat: newDlat, lng: newDlong });
 
-  const newDistanceKm = await computeNewRouteDistance(order, newDlat, newDlong);
+  const { newDistanceKm, stops } = await computeNewRouteDistance(order, newDlat, newDlong);
+  // Porter-anchored order: re-anchor on the new route (null = rate-card order, left as is).
+  const porterAnchor = await newRouteAnchor(order, {
+    pickup: { lat: order.plat, lng: order.plong }, drop: { lat: newDlat, lng: newDlong }, stops, newDistanceKm,
+  });
   const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
   const packageId = Number(order.delivery_type) || 1;
 
@@ -82,7 +88,8 @@ async function previewDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     newDistanceKm,
     radiusKm,
     Number(order.extra_mile_charge) || 0,
-    numericUid
+    numericUid,
+    ...anchorArgs(porterAnchor)
   );
 
   const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
@@ -153,7 +160,11 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
     }
     await serviceAreaService.assertOrderChangeAllowed(order, { kind: "drop", lat: newDlat, lng: newDlong });
 
-    const newDistanceKm = await computeNewRouteDistance(order, newDlat, newDlong);
+    const { newDistanceKm, stops } = await computeNewRouteDistance(order, newDlat, newDlong);
+    // Porter-anchored order: re-anchor on the new route (null = rate-card order, left as is).
+    const porterAnchor = await newRouteAnchor(order, {
+      pickup: { lat: order.plat, lng: order.plong }, drop: { lat: newDlat, lng: newDlong }, stops, newDistanceKm,
+    });
     const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
     const packageId = Number(order.delivery_type) || 1;
 
@@ -162,7 +173,8 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
       newDistanceKm,
       radiusKm,
       Number(order.extra_mile_charge) || 0,
-      numericUid
+      numericUid,
+      ...anchorArgs(porterAnchor)
     );
 
     const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
@@ -183,6 +195,7 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
         total_dcharge: newFare,
         driver_earning: driverEarning,
         commission: commission,
+        ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
       },
     });
     // A cheaper new route must not keep points redeemed against the old fare.

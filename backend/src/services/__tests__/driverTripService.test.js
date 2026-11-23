@@ -1,3 +1,7 @@
+jest.mock('../porterQuoteService', () => ({
+  anchorFromOrder: (o) => (o && o.porter_quote && Number(o.porter_quote.fare) > 0 ? { ...o.porter_quote } : null),
+  anchorForNewRoute: jest.fn(),
+}));
 jest.mock('../../config/db', () => ({
   $transaction: jest.fn(), $queryRaw: jest.fn(),
   pkg_order: { findUnique: jest.fn(), update: jest.fn() },
@@ -357,4 +361,25 @@ describe('arrival time vs a skewed phone clock', () => {
       expect(now - new Date(timer.pickup_wait_start).getTime()).toBeLessThanOrEqual(60000);
     }
   });
+});
+
+test('OTP-mismatch reprice on a Porter-anchored order: old anchor for the old route, new anchor for the new route, new anchor persisted', async () => {
+  const pricingEngine = require('../pricingEngine');
+  const { anchorForNewRoute } = require('../porterQuoteService');
+  const newAnchor = { fare: 330, scaled: true };
+  anchorForNewRoute.mockResolvedValue(newAnchor);
+  Object.assign(order, { distance: 10, d_charge: 350, total_dcharge: 350, driver_earning: 350, commission: 12.5, delivery_type: 1,
+    porter_quote: { fare: 300 }, city_id: 7, category: '3 Wheeler' });
+  pricingEngine.priceForPackageId.mockImplementation(async (pid, d, r, e, u, s, m, a) => ({ fare: a ? a.fare : 999, commission: 10 }));
+  await call('arrived');
+  await call('pickup', { otp: '1234', lat: 28.61, lng: 77.2 });
+
+  expect(anchorForNewRoute).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }), { // same order object, mutated by the update afterwards
+    pickup: { lat: 28.61, lng: 77.2 }, drop: { lat: 28.7, lng: 77.3 }, stops: [], newDistanceKm: 12.5,
+  });
+  expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(1, 10, 1, 0, 8, null, null, { fare: 300 });
+  expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(1, 12.5, 1, 0, 8, null, null, newAnchor);
+  expect(order.d_charge).toBe(380); // 330 new + (350 - 300) carried radius
+  expect(order.porter_quote).toBe(newAnchor);
+  expect(order.distance).toBe(12.5);
 });

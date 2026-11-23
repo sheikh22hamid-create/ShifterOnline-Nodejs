@@ -8,6 +8,7 @@ const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRout
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
+const { anchorOf, newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
 
 // A stop can be added from booking right through the on-route leg (status 3).
 // It is always appended after the existing stops and before the final drop, so
@@ -71,6 +72,12 @@ async function priceWithStop(order, existingStops, newStop) {
   const stopSettings = await pricingEngine.getAddStopSettings(order.category);
   const newExtraMileCharge = (Number(order.extra_mile_charge) || 0) + stopSettings.extraStopCharge;
   const packageId = Number(order.delivery_type) || 1;
+  // Porter-anchored order: the old route keeps the order's anchor, the new route gets a re-anchored one
+  // (null on both for a rate-card order).
+  const oldAnchor = anchorOf(order);
+  const porterAnchor = await newRouteAnchor(order, {
+    pickup: { lat: order.plat, lng: order.plong }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
+  });
 
   if (order.order_status === 3) {
     // Goods already picked up: the driver-to-pickup radius charge was fixed at
@@ -80,24 +87,24 @@ async function priceWithStop(order, existingStops, newStop) {
     // current distance) and carry it onto the new route's zero-radius fare -
     // same recovery driverTripService uses for an OTP-point relocation.
     const zeroRadiusOld = await pricingEngine.priceForPackageId(
-      packageId, Number(order.distance) || 0, 1, Number(order.extra_mile_charge) || 0, order.uid);
+      packageId, Number(order.distance) || 0, 1, Number(order.extra_mile_charge) || 0, order.uid, ...anchorArgs(oldAnchor));
     const impliedRadiusAmount = Math.max(0, (Number(order.d_charge) || 0) - zeroRadiusOld.fare);
     const zeroRadiusNew = await pricingEngine.priceForPackageId(
-      packageId, newDistanceKm, 1, newExtraMileCharge, order.uid);
+      packageId, newDistanceKm, 1, newExtraMileCharge, order.uid, ...anchorArgs(porterAnchor));
     const fare = Math.round(zeroRadiusNew.fare + impliedRadiusAmount);
     // driver_earning is the gross fare; commission is a percentage - keep this
     // order's own (same as the relocation path).
     const commission = order.commission !== null && order.commission !== undefined && Number.isFinite(Number(order.commission))
       ? Number(order.commission)
       : zeroRadiusNew.commission;
-    return { newDistanceKm, newExtraMileCharge, stopSettings, fare, driverEarning: fare, commission };
+    return { newDistanceKm, newExtraMileCharge, stopSettings, porterAnchor, fare, driverEarning: fare, commission };
   }
 
   // Pickup hasn't moved - same real driver-to-pickup distance basis
   // destination/pickup-change use, never radius_range.
   const radiusKm = await getDriverRealDistanceKm(order.rid, order.plat, order.plong);
-  const priced = await pricingEngine.priceForPackageId(packageId, newDistanceKm, radiusKm, newExtraMileCharge, order.uid);
-  return { newDistanceKm, newExtraMileCharge, stopSettings, ...priced };
+  const priced = await pricingEngine.priceForPackageId(packageId, newDistanceKm, radiusKm, newExtraMileCharge, order.uid, ...anchorArgs(porterAnchor));
+  return { newDistanceKm, newExtraMileCharge, stopSettings, porterAnchor, ...priced };
 }
 
 /**
@@ -170,7 +177,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
     }
 
     const newStop = { lat: Number(lat), lng: Number(lng) };
-    const { newDistanceKm, newExtraMileCharge, fare, driverEarning, commission } =
+    const { newDistanceKm, newExtraMileCharge, porterAnchor, fare, driverEarning, commission } =
       await priceWithStop(order, existingStops, newStop);
 
     const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
@@ -202,6 +209,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
         driver_earning: driverEarning,
         commission: commission,
         extra_mile_charge: newExtraMileCharge,
+        ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
       },
     });
     await reconcileRideDiscountToFare(numericOrderId, newFare, tx);

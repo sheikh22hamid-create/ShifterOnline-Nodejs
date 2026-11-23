@@ -1,3 +1,7 @@
+jest.mock("../porterQuoteService", () => ({
+  anchorFromOrder: (o) => (o && o.porter_quote && Number(o.porter_quote.fare) > 0 ? { ...o.porter_quote } : null),
+  anchorForNewRoute: jest.fn(),
+}));
 jest.mock("../referralPointsRefund", () => ({ reconcileRideDiscountToFare: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../config/db", () => {
   const mockPrisma = {
@@ -237,5 +241,58 @@ describe("orderStopsService", () => {
         expect.objectContaining({ data: expect.objectContaining({ milestone: "stop_added_2" }) })
       );
     });
+  });
+});
+
+describe("orderStopsService — Porter anchor re-anchoring", () => {
+  const { anchorForNewRoute } = require("../porterQuoteService");
+  const anchored = {
+    id: 101, uid: 55, rid: 22, order_status: 1, o_status: "Processing",
+    plat: "28.5355", plong: "77.3910", dlat: "28.6000", dlong: "77.4000",
+    distance: 10.2, d_charge: 150, total_dcharge: 150, delivery_type: 6, extra_mile_charge: 0,
+    porter_quote: { fare: 300 }, city_id: 7, category: "3 Wheeler",
+  };
+  const oldAnchor = { fare: 300 };
+  const newAnchor = { fare: 420, scaled: true };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    pricingEngine.getAddStopSettings.mockResolvedValue({ maxExtraStops: 2, extraStopCharge: 10 });
+    pricingEngine.priceForPackageId.mockReset().mockResolvedValue({ fare: 430, driverEarning: 400, commission: 15 });
+    getMultiStopDistanceKm.mockResolvedValue({ distanceKm: 16 });
+    prisma.pkg_order_stops.findMany.mockResolvedValue([]);
+    prisma.pkg_order_stops.create.mockResolvedValue({ id: 5 });
+    prisma.pkg_order_wait_timer.findFirst.mockResolvedValue(null);
+    anchorForNewRoute.mockResolvedValue(newAnchor);
+  });
+
+  it("re-anchors with the stop on the route and persists it with the new distance", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue(anchored);
+    prisma.pkg_order.update.mockResolvedValue({ ...anchored, driver_earning: 400 });
+    await orderStopsService.confirmAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" });
+    expect(anchorForNewRoute).toHaveBeenCalledWith(anchored, {
+      pickup: { lat: 28.5355, lng: 77.391 }, drop: { lat: 28.6, lng: 77.4 }, stops: [{ lat: 28.57, lng: 77.38 }], newDistanceKm: 16,
+    });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 16, 1, 10, 55, null, null, newAnchor);
+    expect(prisma.pkg_order.update.mock.calls[0][0].data).toEqual(expect.objectContaining({ distance: 16, porter_quote: newAnchor }));
+  });
+
+  it("on route: implied radius uses the OLD anchor for the old route and the NEW anchor for the new route", async () => {
+    const onRoute = { ...anchored, order_status: 3, o_status: "On_Route", d_charge: 350, total_dcharge: 350, commission: 15 };
+    prisma.pkg_order.findUnique.mockResolvedValue(onRoute);
+    pricingEngine.priceForPackageId.mockImplementation(async (_p, d, _r, _e, _u, _s, _m, a) => ({ fare: a === newAnchor ? 420 : a && a.fare === 300 ? 300 : 999, commission: 15 }));
+    const preview = await orderStopsService.previewAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 10.2, 1, 0, 55, null, null, oldAnchor);
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 16, 1, 10, 55, null, null, newAnchor);
+    expect(preview.new_fare).toBe(470); // 420 new zero-radius + (350 - 300) carried radius
+  });
+
+  it("unanchored order: no porter_quote write", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...anchored, porter_quote: null });
+    prisma.pkg_order.update.mockResolvedValue({ ...anchored, driver_earning: 400 });
+    await orderStopsService.confirmAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" });
+    expect(anchorForNewRoute).not.toHaveBeenCalled();
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 16, 1, 10, 55);
+    expect(prisma.pkg_order.update.mock.calls[0][0].data).not.toHaveProperty("porter_quote");
   });
 });

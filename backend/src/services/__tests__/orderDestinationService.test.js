@@ -1,3 +1,7 @@
+jest.mock("../porterQuoteService", () => ({
+  anchorFromOrder: (o) => (o && o.porter_quote && Number(o.porter_quote.fare) > 0 ? { ...o.porter_quote } : null),
+  anchorForNewRoute: jest.fn(),
+}));
 jest.mock("../orderAreaTitles", () => ({
   resolveOrderTitles: jest.fn(),
   resolveSideTitle: jest.fn().mockResolvedValue(null),
@@ -319,5 +323,51 @@ describe("orderDestinationService", () => {
       await run();
       expect(resolveSideTitle.mock.invocationCallOrder[0]).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
     });
+  });
+});
+
+describe("orderDestinationService — Porter anchor re-anchoring", () => {
+  const { anchorForNewRoute } = require("../porterQuoteService");
+  const anchoredOrder = { ...{
+    id: 101, uid: 55, rid: 22, order_status: 1, o_status: "Processing",
+    plat: "28.5355", plong: "77.3910", dlat: "28.6000", dlong: "77.4000", daddress: "Old Drop Address",
+    distance: 10.2, d_charge: 150, total_dcharge: 150, delivery_type: 6, extra_mile_charge: 0,
+  }, porter_quote: { fare: 300, porter_vehicle_id: 91 }, city_id: 7, category: "3 Wheeler" };
+  const newAnchor = { fare: 390, porter_vehicle_id: 91, scaled: true };
+  const args = { uid: 55, orderId: 101, newDlat: 28.65, newDlong: 77.45, newDaddress: "New Drop Address, Sector 62" };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 14.5 });
+    pricingEngine.priceForPackageId.mockResolvedValue({ fare: 410, driverEarning: 380, commission: 15 });
+    anchorForNewRoute.mockResolvedValue(newAnchor);
+    prisma.tbl_rider.findUnique.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue(anchoredOrder);
+    prisma.pkg_order.update.mockResolvedValue({ ...anchoredOrder, driver_earning: 380 });
+  });
+
+  it("preview prices the new route off the new anchor", async () => {
+    const preview = await orderDestinationService.previewDestinationChange(args);
+    expect(anchorForNewRoute).toHaveBeenCalledWith(anchoredOrder, {
+      pickup: { lat: 28.5355, lng: 77.391 }, drop: { lat: 28.65, lng: 77.45 }, stops: [], newDistanceKm: 14.5,
+    });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 14.5, 1, 0, 55, null, null, newAnchor);
+    expect(preview.new_fare).toBe(410);
+    expect(prisma.pkg_order.update).not.toHaveBeenCalled();
+  });
+
+  it("confirm persists the new anchor in the same update that writes the new distance", async () => {
+    await orderDestinationService.confirmDestinationChange(args);
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 14.5, 1, 0, 55, null, null, newAnchor);
+    expect(prisma.pkg_order.update).toHaveBeenCalledTimes(1);
+    expect(prisma.pkg_order.update.mock.calls[0][0].data).toEqual(expect.objectContaining({ distance: 14.5, porter_quote: newAnchor, total_dcharge: 410 }));
+  });
+
+  it("unanchored order: no re-anchor, no porter_quote write, 5-arg pricing", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ ...anchoredOrder, porter_quote: null });
+    await orderDestinationService.confirmDestinationChange(args);
+    expect(anchorForNewRoute).not.toHaveBeenCalled();
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 14.5, 1, 0, 55);
+    expect(prisma.pkg_order.update.mock.calls[0][0].data).not.toHaveProperty("porter_quote");
   });
 });

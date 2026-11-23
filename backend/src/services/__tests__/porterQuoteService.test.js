@@ -117,3 +117,77 @@ describe("helpers", () => {
     expect(svc.PORTER_PRICING_VEHICLE_ID.three_wheeler).toBe(91);
   });
 });
+
+describe("anchorForNewRoute", () => {
+  const anchored = (over = {}) => ({
+    id: 5, city_id: 7, category: "3 Wheeler", delivery_type: 4, distance: 10,
+    porter_quote: { fare: 300, porter_distance_km: 9.8, porter_vehicle_id: 91, quoted_at: "2026-11-22T09:00:00Z" },
+    ...over,
+  });
+  const route = (over = {}) => ({ pickup: P, drop: D, stops: [], newDistanceKm: 13, ...over });
+  // rate card 200 at the old distance (10), 260 at the new one (13); a Porter-anchored price stays near it.
+  const price = () => jest.fn(async (_pkg, d, _r, _e, _u, _s, _m, anchor) => ({ fare: anchor ? anchor.fare : d === 10 ? 200 : 260 }));
+
+  test("order without an anchor -> null, no fetch", async () => {
+    const f = okFetch();
+    const p = price();
+    expect(await svc.anchorForNewRoute(anchored({ porter_quote: null }), route(), { fetchImpl: f, priceForPackageId: p })).toBeNull();
+    expect(f).not.toHaveBeenCalled();
+    expect(p).not.toHaveBeenCalled();
+  });
+
+  test("live Porter quote for the new route wins", async () => {
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 280 }]));
+    const a = await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: price() });
+    expect(a).toEqual({ fare: 280, porter_distance_km: 6.2, porter_vehicle_id: 91, quoted_at: "2026-11-22T10:00:00Z" });
+    expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ pickup: P, drop: D, stops: [] });
+  });
+
+  test("Porter unavailable -> old fare scaled by the rate-card ratio (200 -> 260 = x1.3)", async () => {
+    const f = jest.fn().mockRejectedValue(new Error("down"));
+    const p = price();
+    const a = await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: p, now: () => Date.parse("2026-11-23T08:00:00Z") });
+    expect(a).toEqual({ fare: 390, porter_distance_km: 9.8, porter_vehicle_id: 91, quoted_at: "2026-11-23T08:00:00.000Z", scaled: true });
+    expect(p).toHaveBeenCalledWith(4, 10, 1, 0, null);
+    expect(p).toHaveBeenCalledWith(4, 13, 1, 0, null);
+  });
+
+  test("stops present -> scaled path, no Porter call", async () => {
+    const f = okFetch();
+    const a = await svc.anchorForNewRoute(anchored(), route({ stops: [{ lat: 22.73, lng: 75.87 }] }), { fetchImpl: f, priceForPackageId: price() });
+    expect(f).not.toHaveBeenCalled();
+    expect(a.fare).toBe(390);
+    expect(a.scaled).toBe(true);
+  });
+
+  test("city not enabled / no category -> scaled, no fetch", async () => {
+    const f = okFetch();
+    expect((await svc.anchorForNewRoute(anchored({ city_id: 9 }), route(), { fetchImpl: f, priceForPackageId: price() })).fare).toBe(390);
+    expect((await svc.anchorForNewRoute(anchored({ category: null }), route(), { fetchImpl: f, priceForPackageId: price() })).fare).toBe(390);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  test("old distance 0 or a zero rate-card fare -> old anchor unchanged (fresh object)", async () => {
+    const f = jest.fn().mockRejectedValue(new Error("down"));
+    const order = anchored({ distance: 0 });
+    const a = await svc.anchorForNewRoute(order, route(), { fetchImpl: f, priceForPackageId: price() });
+    expect(a).toEqual(order.porter_quote);
+    expect(a).not.toBe(order.porter_quote);
+    const zero = jest.fn(async () => ({ fare: 0 }));
+    expect(await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: zero })).toEqual(order.porter_quote);
+  });
+
+  test("live quote failing the sanity guard (>2x rate card) -> scaled instead", async () => {
+    const f = okFetch(okBody([{ porter_vehicle_id: 91, fare: 900 }]));
+    const a = await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: price() });
+    expect(a.fare).toBe(390);
+    expect(a.scaled).toBe(true);
+  });
+
+  test("rounds the scaled fare to 2 decimals", async () => {
+    const f = jest.fn().mockRejectedValue(new Error("down"));
+    const p = jest.fn(async (_pkg, d) => ({ fare: d === 10 ? 300 : 100 }));
+    const a = await svc.anchorForNewRoute(anchored({ porter_quote: { fare: 100 } }), route(), { fetchImpl: f, priceForPackageId: p });
+    expect(a.fare).toBe(33.33);
+  });
+});

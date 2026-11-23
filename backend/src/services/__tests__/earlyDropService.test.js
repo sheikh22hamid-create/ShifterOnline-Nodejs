@@ -1,3 +1,7 @@
+jest.mock("../porterQuoteService", () => ({
+  anchorFromOrder: (o) => (o && o.porter_quote && Number(o.porter_quote.fare) > 0 ? { ...o.porter_quote } : null),
+  anchorForNewRoute: jest.fn(),
+}));
 jest.mock("../../config/db", () => ({
   tbl_rider: { findUnique: jest.fn() },
   tbl_user: { update: jest.fn() },
@@ -192,5 +196,37 @@ describe("earlyDropService", () => {
       expect(data).not.toHaveProperty("pickup_title");
       expect(resolveSideTitle.mock.invocationCallOrder[0]).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
     });
+  });
+});
+
+describe("earlyDropService — Porter anchor re-anchoring", () => {
+  const { anchorForNewRoute } = require("../porterQuoteService");
+  const anchored = { ...order, porter_quote: { fare: 300 }, city_id: 7, category: "3 Wheeler" };
+  const newAnchor = { fare: 150, scaled: true };
+
+  beforeEach(() => {
+    anchorForNewRoute.mockResolvedValue(newAnchor);
+    computeRouteDistanceKm.mockResolvedValue(6);
+    pricingEngine.priceForPackageId.mockResolvedValue({ fare: 160, driverEarning: 150, commission: 10 });
+  });
+
+  it("prices the shorter trip off the re-anchored fare and persists the new anchor", async () => {
+    const result = await early.applyEarlyDrop(anchored, 9, { lat: 22.75, lng: 75.9 }, 7000);
+    expect(anchorForNewRoute).toHaveBeenCalledWith(anchored, {
+      pickup: { lat: 22.7, lng: 75.85 }, drop: { lat: 22.75, lng: 75.9 }, stops: [], newDistanceKm: 6,
+    });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(2, 6, 1, 0, 3, null, null, newAnchor);
+    expect(prisma.pkg_order.update).toHaveBeenCalledWith({
+      where: { id: 7 },
+      data: expect.objectContaining({ distance: 6, d_charge: 160, porter_quote: newAnchor }),
+    });
+    expect(result).toMatchObject({ new_fare: 160 });
+  });
+
+  it("unanchored order: no porter_quote write, 5-arg pricing", async () => {
+    await early.applyEarlyDrop(order, 9, { lat: 22.75, lng: 75.9 }, 7000);
+    expect(anchorForNewRoute).not.toHaveBeenCalled();
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(2, 6, 1, 0, 3);
+    expect(prisma.pkg_order.update.mock.calls[0][0].data).not.toHaveProperty("porter_quote");
   });
 });
