@@ -12,7 +12,7 @@ const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
 const { resolveSideTitle } = require("./orderAreaTitles");
-const { newRouteAnchor, anchorArgs, porterQuoteUpdate } = require("./orderPorterAnchor");
+const { newRouteAnchor, anchorArgs, porterQuoteUpdate, precomputeNewRouteAnchor, lockedRouteAnchor } = require("./orderPorterAnchor");
 
 // Pickup can move while the order is still pending (0), while the driver is
 // en route to it (1), or even after the driver has already arrived and is
@@ -138,6 +138,16 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
   // transaction open. A failed lookup stores null rather than keeping the old point's title.
   const pickupTitle = await resolveSideTitle(newPlat, newPlong);
 
+  // Porter-anchored order: the new route's distance + anchor (a Porter call of up to timeout_ms) are computed
+  // here, from a row read outside the lock, so no network call holds the row lock / the 5 s transaction.
+  const preOrder = await prisma.pkg_order.findUnique({ where: { id: numericOrderId } }).catch(() => null);
+  const preAnchor = preOrder && preOrder.uid === numericUid
+    ? await precomputeNewRouteAnchor(preOrder, async (o) => {
+        const { newDistanceKm, stops } = await computeNewRouteDistance(o, newPlat, newPlong);
+        return { pickup: { lat: newPlat, lng: newPlong }, drop: { lat: o.dlat, lng: o.dlong }, stops, newDistanceKm };
+      })
+    : null;
+
   const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM pkg_order WHERE id = ${numericOrderId} FOR UPDATE`;
 
@@ -145,11 +155,11 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
     assertOrderEditable(order, numericUid);
     await serviceAreaService.assertOrderChangeAllowed(order, { kind: "pickup", lat: newPlat, lng: newPlong });
 
-    const { newDistanceKm, stops } = await computeNewRouteDistance(order, newPlat, newPlong);
-    // Porter-anchored order: re-anchor on the new route (null = rate-card order, left as is).
-    const porterAnchor = await newRouteAnchor(order, {
-      pickup: { lat: newPlat, lng: newPlong }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
-    });
+    // Anchor precomputed before the lock; if the locked row's route/anchor changed meanwhile it is not used
+    // (anchor null: rate card for the new route, stored anchor cleared). Rate-card orders: unchanged path.
+    const locked = lockedRouteAnchor(preAnchor, order);
+    const { newDistanceKm } = locked.matched ? locked.route : await computeNewRouteDistance(order, newPlat, newPlong);
+    const porterAnchor = locked.anchor;
     const radiusKm = await getDriverRealDistanceKm(order.rid, newPlat, newPlong);
     const packageId = Number(order.delivery_type) || 1;
 

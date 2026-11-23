@@ -8,7 +8,10 @@ const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRout
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
-const { anchorOf, newRouteAnchor, anchorArgs, porterQuoteUpdate } = require("./orderPorterAnchor");
+const { anchorOf, newRouteAnchor, anchorArgs, porterQuoteUpdate, precomputeNewRouteAnchor, lockedRouteAnchor } = require("./orderPorterAnchor");
+
+// The stop list a new route was computed from, as part of the "unchanged since the pre-read" check.
+const stopsBasis = (stops) => (stops || []).map((s) => [s.id ?? null, s.sequence ?? null, String(s.lat), String(s.lng)]);
 
 // A stop can be added from booking right through the on-route leg (status 3).
 // It is always appended after the existing stops and before the final drop, so
@@ -64,18 +67,24 @@ async function assertNotAtDrop(client, order) {
   }
 }
 
-async function priceWithStop(order, existingStops, newStop) {
+const routeDistanceWithStop = (order, existingStops, newStop) => computeRouteDistanceKm({
+  plat: order.plat, plong: order.plong, stops: [...existingStops, newStop], dlat: order.dlat, dlong: order.dlong,
+});
+
+/**
+ * precomputed (confirm only): { newDistanceKm, porterAnchor } worked out before the row-lock transaction, so
+ * no Porter call runs inside it. Omitted (preview, rate-card orders): computed here as before.
+ */
+async function priceWithStop(order, existingStops, newStop, precomputed = null) {
   const stops = [...existingStops, newStop];
-  const newDistanceKm = await computeRouteDistanceKm({
-    plat: order.plat, plong: order.plong, stops, dlat: order.dlat, dlong: order.dlong,
-  });
+  const newDistanceKm = precomputed ? precomputed.newDistanceKm : await routeDistanceWithStop(order, existingStops, newStop);
   const stopSettings = await pricingEngine.getAddStopSettings(order.category);
   const newExtraMileCharge = (Number(order.extra_mile_charge) || 0) + stopSettings.extraStopCharge;
   const packageId = Number(order.delivery_type) || 1;
   // Porter-anchored order: the old route keeps the order's anchor, the new route gets a re-anchored one
   // (null on both for a rate-card order).
   const oldAnchor = anchorOf(order);
-  const porterAnchor = await newRouteAnchor(order, {
+  const porterAnchor = precomputed ? precomputed.porterAnchor : await newRouteAnchor(order, {
     pickup: { lat: order.plat, lng: order.plong }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
   });
 
@@ -159,6 +168,23 @@ async function previewAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
 async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, contact_name, contact_number }) {
   const { numericOrderId, numericUid } = assertUsable({ orderId, uid, lat, lng });
   const cleanAddress = sanitizeAddress(address);
+  const newStop = { lat: Number(lat), lng: Number(lng) };
+
+  // Porter-anchored order: the new route's distance + anchor are computed here, from rows read outside the
+  // lock, so no network call holds the row lock / the 5 s transaction.
+  const preOrder = await prisma.pkg_order.findUnique({ where: { id: numericOrderId } }).catch(() => null);
+  let preAnchor = null;
+  if (preOrder && preOrder.uid === numericUid && anchorOf(preOrder)) {
+    try {
+      const preStops = await prisma.pkg_order_stops.findMany({ where: { order_id: numericOrderId }, orderBy: { sequence: "asc" } });
+      preAnchor = await precomputeNewRouteAnchor(preOrder, async (o) => ({
+        pickup: { lat: o.plat, lng: o.plong }, drop: { lat: o.dlat, lng: o.dlong }, stops: [...preStops, newStop],
+        newDistanceKm: await routeDistanceWithStop(o, preStops, newStop),
+      }), stopsBasis(preStops));
+    } catch (_) {
+      preAnchor = null; // the locked step fails closed
+    }
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM pkg_order WHERE id = ${numericOrderId} FOR UPDATE`;
@@ -176,9 +202,16 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
       throw new Error("MAX_STOPS_EXCEEDED");
     }
 
-    const newStop = { lat: Number(lat), lng: Number(lng) };
+    // Precomputed anchor only if the locked row and stop list are unchanged since the pre-read; an anchored order
+    // that changed meanwhile gets anchor null (rate card for the new route, stored anchor cleared).
+    const locked = lockedRouteAnchor(preAnchor, order, stopsBasis(existingStops));
+    const precomputed = locked.matched
+      ? { newDistanceKm: locked.route.newDistanceKm, porterAnchor: locked.anchor }
+      : anchorOf(order)
+        ? { newDistanceKm: await routeDistanceWithStop(order, existingStops, newStop), porterAnchor: null }
+        : null;
     const { newDistanceKm, newExtraMileCharge, porterAnchor, fare, driverEarning, commission } =
-      await priceWithStop(order, existingStops, newStop);
+      await priceWithStop(order, existingStops, newStop, precomputed);
 
     const oldFare = Math.round(Number(order.total_dcharge) > 0 ? Number(order.total_dcharge) : Number(order.d_charge) || 0);
     const newFare = Math.round(fare);
