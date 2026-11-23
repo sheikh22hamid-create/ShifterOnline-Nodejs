@@ -8,7 +8,7 @@ const { getDriverRealDistanceKm, computeRouteDistanceKm } = require("./orderRout
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
-const { anchorOf, newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
+const { anchorOf, newRouteAnchor, anchorArgs, porterQuoteUpdate } = require("./orderPorterAnchor");
 
 // A stop can be added from booking right through the on-route leg (status 3).
 // It is always appended after the existing stops and before the final drop, so
@@ -209,7 +209,7 @@ async function confirmAddStop({ uid, orderId, lat, lng, address, hno, landmark, 
         driver_earning: driverEarning,
         commission: commission,
         extra_mile_charge: newExtraMileCharge,
-        ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
+        ...porterQuoteUpdate(order, porterAnchor),
       },
     });
     await reconcileRideDiscountToFare(numericOrderId, newFare, tx);

@@ -7,7 +7,7 @@ const { RIDER_LOCATION_FRESHNESS_MS } = require("../config/constants");
 const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const { resolveSideTitle } = require("./orderAreaTitles");
-const { newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
+const { newRouteAnchor, anchorArgs, porterQuoteUpdate } = require("./orderPorterAnchor");
 
 // Early Drop: the customer asks to be dropped before the booked destination.
 // When the driver taps Complete while still this far from the booked drop, the
@@ -187,7 +187,7 @@ async function applyEarlyDrop(order, riderId, point, distanceM) {
         total_dcharge: fare.newFare,
         driver_earning: fare.driverEarning,
         commission: fare.commission,
-        ...(fare.porterAnchor ? { porter_quote: fare.porterAnchor } : {}),
+        ...porterQuoteUpdate(order, fare.porterAnchor || null),
       },
     });
     // Order #468: 326 points were redeemed at the Rs652 booking fare (50% cap);

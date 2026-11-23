@@ -315,7 +315,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
             const pricingEngine = require('./pricingEngine');
             // Porter-anchored order: old anchor prices the old route, a re-anchored one the new route
             // (null on both for a rate-card order, which keeps the original 5-arg calls).
-            const { anchorOf, newRouteAnchor, anchorArgs } = require('./orderPorterAnchor');
+            const { anchorOf, newRouteAnchor, anchorArgs, porterQuoteUpdate } = require('./orderPorterAnchor');
             const oldAnchor = anchorOf(order);
             const porterAnchor = await newRouteAnchor(order, {
               pickup: { lat, lng }, drop: { lat: order.dlat, lng: order.dlong }, stops, newDistanceKm,
@@ -343,7 +343,7 @@ async function progressTrip({ orderId, riderId, action = 'sync', otp, samples = 
               plat: String(lat), plong: String(lng), distance: Math.round(newDistanceKm * 100) / 100,
               d_charge: finalDCharge, total_dcharge: finalDCharge,
               driver_earning: finalDCharge, commission: existingCommissionPercent, pickup_otp_mismatch_flag: true,
-              ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
+              ...porterQuoteUpdate(order, porterAnchor),
             } }));
             await reconcileRideDiscountToFare(orderId, finalDCharge, tx);
           }

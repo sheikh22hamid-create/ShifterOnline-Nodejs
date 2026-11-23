@@ -167,14 +167,25 @@ describe("anchorForNewRoute", () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  test("old distance 0 or a zero rate-card fare -> old anchor unchanged (fresh object)", async () => {
+  // Fail closed: when the new route can't be anchored the order drops to the rate card, never keeps the old fare.
+  test("old distance 0 / missing -> null", async () => {
     const f = jest.fn().mockRejectedValue(new Error("down"));
-    const order = anchored({ distance: 0 });
-    const a = await svc.anchorForNewRoute(order, route(), { fetchImpl: f, priceForPackageId: price() });
-    expect(a).toEqual(order.porter_quote);
-    expect(a).not.toBe(order.porter_quote);
+    expect(await svc.anchorForNewRoute(anchored({ distance: 0 }), route(), { fetchImpl: f, priceForPackageId: price() })).toBeNull();
+    expect(await svc.anchorForNewRoute(anchored({ distance: null }), route(), { fetchImpl: f, priceForPackageId: price() })).toBeNull();
+  });
+
+  test("rate card <= 0 (old or new) -> null", async () => {
+    const f = jest.fn().mockRejectedValue(new Error("down"));
     const zero = jest.fn(async () => ({ fare: 0 }));
-    expect(await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: zero })).toEqual(order.porter_quote);
+    expect(await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: zero })).toBeNull();
+    const newNegative = jest.fn(async (_p, d) => ({ fare: d === 10 ? 200 : -5 }));
+    expect(await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: newNegative })).toBeNull();
+  });
+
+  test("a thrown pricing error -> null", async () => {
+    const f = jest.fn().mockRejectedValue(new Error("down"));
+    const boom = jest.fn(async () => { throw new Error("no package"); });
+    expect(await svc.anchorForNewRoute(anchored(), route(), { fetchImpl: f, priceForPackageId: boom })).toBeNull();
   });
 
   test("live quote failing the sanity guard (>2x rate card) -> scaled instead", async () => {

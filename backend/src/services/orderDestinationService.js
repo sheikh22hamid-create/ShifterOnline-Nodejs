@@ -9,7 +9,7 @@ const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
 const { resolveSideTitle } = require("./orderAreaTitles");
-const { newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
+const { newRouteAnchor, anchorArgs, porterQuoteUpdate } = require("./orderPorterAnchor");
 
 function isValidCoord(val, min, max) {
   const num = Number(val);
@@ -195,7 +195,7 @@ async function confirmDestinationChange({ uid, orderId, newDlat, newDlong, newDa
         total_dcharge: newFare,
         driver_earning: driverEarning,
         commission: commission,
-        ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
+        ...porterQuoteUpdate(order, porterAnchor),
       },
     });
     // A cheaper new route must not keep points redeemed against the old fare.

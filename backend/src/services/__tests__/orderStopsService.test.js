@@ -296,3 +296,36 @@ describe("orderStopsService — Porter anchor re-anchoring", () => {
     expect(prisma.pkg_order.update.mock.calls[0][0].data).not.toHaveProperty("porter_quote");
   });
 });
+
+describe("orderStopsService — on-route re-anchor failure fails closed", () => {
+  const { anchorForNewRoute } = require("../porterQuoteService");
+  const { Prisma } = require("@prisma/client");
+  const onRoute = {
+    id: 101, uid: 55, rid: 22, order_status: 3, o_status: "On_Route",
+    plat: "28.5355", plong: "77.3910", dlat: "28.6000", dlong: "77.4000",
+    distance: 10.2, d_charge: 350, total_dcharge: 350, delivery_type: 6, extra_mile_charge: 0, commission: 15,
+    porter_quote: { fare: 300 }, city_id: 7, category: "3 Wheeler",
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    pricingEngine.getAddStopSettings.mockResolvedValue({ maxExtraStops: 2, extraStopCharge: 10 });
+    getMultiStopDistanceKm.mockResolvedValue({ distanceKm: 16 });
+    prisma.pkg_order_stops.findMany.mockResolvedValue([]);
+    prisma.pkg_order_stops.create.mockResolvedValue({ id: 5 });
+    prisma.pkg_order_wait_timer.findFirst.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue(onRoute);
+    prisma.pkg_order.update.mockResolvedValue({ ...onRoute });
+    anchorForNewRoute.mockResolvedValue(null);
+    pricingEngine.priceForPackageId.mockReset().mockImplementation(async (_p, _d, _r, _e, _u, _s, _m, a) => ({ fare: a ? 300 : 260, commission: 15 }));
+  });
+
+  it("old route keeps the old anchor, new route uses the rate card, column cleared", async () => {
+    await orderStopsService.confirmAddStop({ uid: 55, orderId: 101, lat: 28.57, lng: 77.38, address: "Stop 1" });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 10.2, 1, 0, 55, null, null, { fare: 300 });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 16, 1, 10, 55);
+    const data = prisma.pkg_order.update.mock.calls[0][0].data;
+    expect(data.d_charge).toBe(310); // 260 rate card + (350 - 300) carried radius
+    expect(data.porter_quote).toBe(Prisma.DbNull);
+  });
+});

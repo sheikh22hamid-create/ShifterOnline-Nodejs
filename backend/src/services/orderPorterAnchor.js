@@ -13,14 +13,14 @@ function anchorOf(order) {
 }
 
 /**
- * Anchor for an order's changed route (porterQuoteService.anchorForNewRoute): null for an unanchored
- * order, so callers can skip the extra pricing argument and the porter_quote write. Any failure keeps
- * the order's current anchor rather than dropping it to the rate card.
+ * Anchor for an order's changed route (porterQuoteService.anchorForNewRoute), or null.
+ * null for an unanchored order (callers skip the extra pricing argument and the porter_quote write)
+ * AND when no anchor can be computed for the new route: fail closed, the new route is priced on the
+ * rate card and the stored anchor is cleared (porterQuoteUpdate), never kept at the old route's fare.
  * route = { pickup:{lat,lng}, drop:{lat,lng}, stops:[{lat,lng}], newDistanceKm }
  */
 async function newRouteAnchor(order, route) {
-  const current = anchorOf(order);
-  if (!current) return null;
+  if (!anchorOf(order)) return null;
   try {
     const { pickup, drop, stops = [], newDistanceKm } = route || {};
     const point = (p) => ({ lat: Number(p?.lat), lng: Number(p?.lng) });
@@ -29,13 +29,24 @@ async function newRouteAnchor(order, route) {
       drop: point(drop),
       stops: (Array.isArray(stops) ? stops : []).map(point),
       newDistanceKm: Number(newDistanceKm),
-    })) || current;
+    })) || null;
   } catch (_) {
-    return current;
+    return null;
   }
 }
 
 /** Extra priceForPackageId args for an anchor: [] when null, so unanchored calls stay byte-identical. */
 const anchorArgs = (anchor) => (anchor ? [null, null, anchor] : []);
 
-module.exports = { anchorOf, newRouteAnchor, anchorArgs };
+/**
+ * pkg_order.update fields for a route change: {} for an order that had no anchor (column untouched),
+ * { porter_quote: newAnchor } when re-anchored, { porter_quote: Prisma.DbNull } when the anchored order
+ * lost its anchor. porter_quote is Json?, where Prisma rejects a plain null.
+ */
+function porterQuoteUpdate(order, newAnchor) {
+  if (!anchorOf(order)) return {};
+  if (newAnchor) return { porter_quote: newAnchor };
+  return { porter_quote: require("@prisma/client").Prisma.DbNull };
+}
+
+module.exports = { anchorOf, newRouteAnchor, anchorArgs, porterQuoteUpdate };

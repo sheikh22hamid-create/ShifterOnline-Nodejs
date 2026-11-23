@@ -47,23 +47,23 @@ describe("createOrderCore: porter anchor", () => {
     expect(spy.mock.calls[0][9]).toEqual(ANCHOR);
   });
 
-  it("stores null and prices from the rate card when Porter has no anchor", async () => {
+  it("leaves porter_quote out (never a plain null on a Json column) and prices from the rate card when Porter has no anchor", async () => {
     porterQuoteService.getPorterAnchor.mockResolvedValue(null);
     const spy = jest.spyOn(pricingEngine, "priceForPackage");
     await createOrderCore({ ...BASE });
-    expect(created().porter_quote).toBeNull();
+    expect(created()).not.toHaveProperty("porter_quote");
     expect(spy.mock.calls[0][9] ?? null).toBeNull();
   });
 
   it("never calls Porter for an order with stops", async () => {
     await createOrderCore({ ...BASE, stops: [{ lat: 22.72, lng: 75.85, address: "Stop" }] });
     expect(porterQuoteService.getPorterAnchor).not.toHaveBeenCalled();
-    expect(created().porter_quote).toBeNull();
+    expect(created()).not.toHaveProperty("porter_quote");
   });
 
-  it("stores null when the sanity guard rejects the anchor", async () => {
+  it("leaves porter_quote out when the sanity guard rejects the anchor", async () => {
     porterQuoteService.withinSanityRange.mockReturnValue(false);
     await createOrderCore({ ...BASE });
-    expect(created().porter_quote).toBeNull();
+    expect(created()).not.toHaveProperty("porter_quote");
   });
 });

@@ -133,7 +133,8 @@ function anchorFromOrder(order) {
  * - no anchor on the order -> null (order stays rate card)
  * - live Porter quote for the new route (city + category known, no stops, passes the sanity guard) -> that quote
  * - else the old anchor scaled by the rate card: old.fare x rateCard(new km) / rateCard(old km), scaled:true
- * - nothing to scale by (old distance 0, rate card <= 0, error) -> a copy of the old anchor
+ * - nothing to scale by (old distance 0, rate card <= 0, error) -> null: fail closed, the order drops its anchor
+ *   and is priced on the rate card at the new distance (never billed at the old route's Porter fare)
  * pricingEngine is required lazily (it requires this module lazily too); tests pass deps.priceForPackageId.
  */
 async function anchorForNewRoute(order, { pickup, drop, stops = [], newDistanceKm } = {}, deps = {}) {
@@ -159,14 +160,14 @@ async function anchorForNewRoute(order, { pickup, drop, stops = [], newDistanceK
       }
     }
 
-    if (!(oldKm > 0) || !Number.isFinite(newKm) || newKm <= 0) return { ...old };
+    if (!(oldKm > 0) || !Number.isFinite(newKm) || newKm <= 0) return null;
     const [oldCard, newCard] = await Promise.all([rateCard(oldKm), rateCard(newKm)]);
-    if (!(oldCard > 0) || !(newCard > 0)) return { ...old };
+    if (!(oldCard > 0) || !(newCard > 0)) return null;
     const fare = Math.round(((old.fare * newCard) / oldCard) * 100) / 100;
     return { ...old, fare, quoted_at: new Date(now()).toISOString(), scaled: true };
   } catch (err) {
     logger.warn(`porterQuoteService.anchorForNewRoute: ${err.message}`);
-    return { ...old };
+    return null;
   }
 }
 

@@ -720,7 +720,7 @@ async function createOrderCore({
       schedule_date_time: finalScheduleDateTime,
       ...nextDayFields,
       city_id: orderCityId,
-      porter_quote: porterAnchor || null,
+      ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
       delivery_type: firstTierPackageId,
       allowed_delivery_types: JSON.stringify(orderedPackageIds),
       trans_id: transactionId || null,

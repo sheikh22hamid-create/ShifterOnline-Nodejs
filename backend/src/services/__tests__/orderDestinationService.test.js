@@ -371,3 +371,35 @@ describe("orderDestinationService — Porter anchor re-anchoring", () => {
     expect(prisma.pkg_order.update.mock.calls[0][0].data).not.toHaveProperty("porter_quote");
   });
 });
+
+describe("orderDestinationService — re-anchor failure fails closed", () => {
+  const { anchorForNewRoute } = require("../porterQuoteService");
+  const { Prisma } = require("@prisma/client");
+  const anchoredOrder = {
+    id: 101, uid: 55, rid: 22, order_status: 1, o_status: "Processing",
+    plat: "28.5355", plong: "77.3910", dlat: "28.6000", dlong: "77.4000", daddress: "Old Drop Address",
+    distance: 10.2, d_charge: 150, total_dcharge: 150, delivery_type: 6, extra_mile_charge: 0,
+    porter_quote: { fare: 300 }, city_id: 7, category: "3 Wheeler",
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getRoadDistanceKm.mockResolvedValue({ distanceKm: 14.5 });
+    pricingEngine.priceForPackageId.mockResolvedValue({ fare: 195, driverEarning: 165, commission: 15.38 });
+    anchorForNewRoute.mockResolvedValue(null); // no new anchor could be computed
+    prisma.tbl_rider.findUnique.mockResolvedValue(null);
+    prisma.pkg_order.findUnique.mockResolvedValue(anchoredOrder);
+    prisma.pkg_order.update.mockResolvedValue({ ...anchoredOrder, driver_earning: 165 });
+  });
+
+  it("anchored order whose re-anchor fails: rate-card fare, porter_quote cleared with Prisma.DbNull in the same update", async () => {
+    const result = await orderDestinationService.confirmDestinationChange({
+      uid: 55, orderId: 101, newDlat: 28.65, newDlong: 77.45, newDaddress: "New Drop Address, Sector 62",
+    });
+    expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 14.5, 1, 0, 55); // no anchor -> rate card
+    const data = prisma.pkg_order.update.mock.calls[0][0].data;
+    expect(data.distance).toBe(14.5);
+    expect(data.porter_quote).toBe(Prisma.DbNull);
+    expect(result.new_fare).toBe(195);
+  });
+});

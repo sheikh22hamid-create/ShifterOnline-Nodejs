@@ -12,7 +12,7 @@ const logger = require("../utils/logger");
 const { reconcileRideDiscountToFare } = require("./referralPointsRefund");
 const orderFareHistory = require("./orderFareHistory");
 const { resolveSideTitle } = require("./orderAreaTitles");
-const { newRouteAnchor, anchorArgs } = require("./orderPorterAnchor");
+const { newRouteAnchor, anchorArgs, porterQuoteUpdate } = require("./orderPorterAnchor");
 
 // Pickup can move while the order is still pending (0), while the driver is
 // en route to it (1), or even after the driver has already arrived and is
@@ -187,7 +187,7 @@ async function confirmPickupChange({ uid, orderId, newPlat, newPlong, newPaddres
       total_dcharge: newFare,
       driver_earning: driverEarning,
       commission: commission,
-      ...(porterAnchor ? { porter_quote: porterAnchor } : {}),
+      ...porterQuoteUpdate(order, porterAnchor),
     };
 
     if (wasWaitingAtPickup) {
