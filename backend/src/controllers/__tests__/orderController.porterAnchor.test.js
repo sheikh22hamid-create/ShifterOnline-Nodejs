@@ -17,6 +17,7 @@ jest.mock("../../services/porterQuoteService", () => ({
 }));
 
 const prisma = require("../../config/db");
+const logger = require("../../utils/logger");
 const porterQuoteService = require("../../services/porterQuoteService");
 const pricingEngine = require("../../services/pricingEngine");
 const { createOrderCore } = require("../orderController");
@@ -67,5 +68,31 @@ describe("createOrderCore: porter anchor", () => {
     porterQuoteService.withinSanityRange.mockReturnValue(false);
     await createOrderCore({ ...BASE });
     expect(created()).not.toHaveProperty("porter_quote");
+  });
+
+  it("logs a warning with both totals and the source when the client total differs from the server fare", async () => {
+    const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
+    const spy = jest.spyOn(pricingEngine, "priceForPackage");
+    await createOrderCore({ ...BASE, totalDcharge: 123 });
+    const serverFare = spy.mock.results[0].value.fare;
+    const msg = warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes("client total"));
+    expect(msg).toBeDefined();
+    expect(msg).toContain("123");
+    expect(msg).toContain(String(serverFare));
+    expect(msg).toContain("porter");
+    // logging only: the order is still created with the client's total, as before
+    expect(created().total_dcharge).toBe(123);
+  });
+
+  it("does not warn when the client total matches the server fare", async () => {
+    const spy = jest.spyOn(pricingEngine, "priceForPackage");
+    await createOrderCore({ ...BASE });
+    const serverFare = spy.mock.results[0].value.fare;
+    jest.clearAllMocks();
+    porterQuoteService.getPorterAnchor.mockResolvedValue(ANCHOR);
+    porterQuoteService.withinSanityRange.mockReturnValue(true);
+    const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
+    await createOrderCore({ ...BASE, totalDcharge: serverFare });
+    expect(warn.mock.calls.map((c) => String(c[0])).some((m) => m.includes("client total"))).toBe(false);
   });
 });

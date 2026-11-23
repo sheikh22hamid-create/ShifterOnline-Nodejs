@@ -469,7 +469,7 @@ async function createOrderCore({
         discount: planDiscount,
       }).catch(() => null)
     : null;
-  const { fare, driverEarning, commission } = (firstVehicleSlabConfig || slabPricingConfig?.modelMultipliers)
+  const { fare, driverEarning, commission, priceSource } = (firstVehicleSlabConfig || slabPricingConfig?.modelMultipliers)
     ? pricingEngine.priceForPackage(
         firstPkg,
         distanceKm,
@@ -524,6 +524,11 @@ async function createOrderCore({
 
   const clientTotal = Number(totalDcharge);
   const clientBase = Number(dCharge);
+  // Estimate and booking each resolve the Porter anchor; flag when the app's total (from the estimate) and the
+  // server-priced fare disagree, so a basis mismatch (Porter vs rate card) is visible. Logging only.
+  if (priceSource && Number.isFinite(clientTotal) && clientTotal > 0 && Math.round(clientTotal * 100) !== Math.round(Number(fare) * 100)) {
+    logger.warn(`createOrderCore: client total ${clientTotal} differs from server fare ${fare} (price source ${priceSource}) for uid ${uid}, package ${firstPkg?.id}`);
+  }
   const agreed = lowFare ? lowFare.discounted : (Number(agreedFare) > 0 ? Number(agreedFare) : null);
   const finalTotalCharge = agreed ?? (validStops.length > 0 ? fare : ((Number.isFinite(clientTotal) && clientTotal > 0) ? clientTotal : fare));
   const finalDCharge = agreed ?? (validStops.length > 0 ? fare : ((Number.isFinite(clientBase) && clientBase > 0) ? clientBase : fare));
