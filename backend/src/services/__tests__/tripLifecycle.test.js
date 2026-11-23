@@ -162,6 +162,18 @@ describe("tripLifecycle.acceptOrder", () => {
     expect(pricingEngine.priceForPackageId).toHaveBeenCalledWith(6, 15.4, 1, 12, 9, null, null, { fare: 300 });
   });
 
+  it("never sends the Porter anchor (porter_quote) to the driver in the accept response", async () => {
+    prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12, porter_quote: { fare: 300 } });
+    prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    prisma.tbl_order_requests.findFirst.mockResolvedValue({ id: 1, order_id: 297, rider_id: 1, package_id: 6, status: "accepted" });
+
+    const result = await tripLifecycle.acceptOrder(297, 1);
+
+    expect(result.success).toBe(true);
+    expect(result.order).not.toHaveProperty("porter_quote");
+    expect(result.order.id).toBe(297);
+  });
+
   it("a corrupt porter_quote reprices exactly as before (no anchor argument)", async () => {
     prisma.pkg_order.findUnique.mockResolvedValue({ id: 297, uid: 9, delivery_type: 6, distance: 15.4, radius_range: 3, extra_mile_charge: 12, porter_quote: "{bad" });
     prisma.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(1);

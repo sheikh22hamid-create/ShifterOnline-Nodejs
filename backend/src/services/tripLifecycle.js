@@ -414,8 +414,10 @@ async function finalizeAcceptedOrder(orderId, riderId, acceptedPackageId) {
   // means no ETA, never a failed accept.
   const pickupEta = pickupEtaApplies(order) ? await pickupEtaService.computeAndStorePickupEta(orderId) : null;
 
+  // The accept response goes to the driver app: never include the Porter anchor (Porter's fare for the route).
+  const { porter_quote: _porterQuote, ...driverOrder } = order;
   return {
-    order: { ...order, ...priced, ...(pickupEta || {}), advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
+    order: { ...driverOrder, ...priced, ...(pickupEta || {}), advance_payment: String(advancePayment), payment_status: paymentStatus, package: pkg },
     rider,
   };
 }
