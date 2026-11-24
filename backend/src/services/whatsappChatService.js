@@ -631,6 +631,27 @@ async function sendAdminMessage({
           ]
         }
       ];
+    } else if (metaTemplateName === "shifter_driver_partner_app" && (!components || components.length === 0)) {
+      const rawName = rawThread?.contact_name || "";
+      const isPhoneOnly = /^\+?\d+$/.test(rawName.trim());
+      const recipientName = (rawName && !isPhoneOnly) ? rawName.trim() : "Driver Partner";
+      components = [
+        {
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: { link: "https://scontent.whatsapp.net/v/t61.29466-34/928194232_1871304367472714_4619012593659818928_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=y2vq_BYiKy8Q7kNvwFP9489&_nc_oc=Adojzho6QEBvFBcdt0fQET4hNcOx9a5nKE44AOOubtr0C5at0ZCQvwRiUdDXAfuU2Q_OPGJW48i4Pgk_TKJPDF73&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=Qg6uIbADQOvTCSIzdArNuw&_nc_tpa=Q5bMBQI_uQ2IX75GF1BHh9SSC7Gh2t5Jz2c09LiSxBhv1g4AWEv-4SkUyef_B6bFDgsdRfsUCegJdZd5CQ&oh=01_Q5Aa6AE_1z_WpIQBxau-7gcFr7-tnNNfSKAvqi3Jy0ev4wigqQ&oe=6B2CEC02" }
+            }
+          ]
+        },
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: recipientName }
+          ]
+        }
+      ];
     } else if (metaTemplateName === "customer_promo_benefits" && (!components || components.length === 0)) {
       components = [
         {

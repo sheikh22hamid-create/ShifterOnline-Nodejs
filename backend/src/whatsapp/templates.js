@@ -45,6 +45,18 @@ const WHATSAPP_TEMPLATES = [
       "Namaste! Welcome to Shifter Online. Book mini trucks and tempos (Tata Ace, Pickup, 3-Wheeler) at affordable fares with verified drivers. Download the Shifter App now or reply to this message to book. Team Shifter Online.",
   },
   {
+    id: "shifter_driver_partner_app",
+    name: "shifter_driver_partner_app",
+    metaTemplateName: "shifter_driver_partner_app",
+    isMetaApproved: true,
+    title: "🚚 Driver Partner App (Play Store Image & Link)",
+    category: "driver",
+    categoryLabel: "Driver Onboarding",
+    description: "Official Meta invite with app icon image, Play Store link in text & button, and Chat With Us button.",
+    message:
+      "🚚 *Shifter Online Partner App*\nDriver App download karein: https://play.google.com/store/apps/details?id=com.shifter.driver\n\nNamaste {{1}} ji! 🙏\n\n*Shifter Online* ek online, on-demand logistics platform hai. Yahan customers apna saaman — parcel, goods aur house shifting — book karte hain, aur booking seedha partner drivers ko milti hai.\n\nAap bhi Partner App se judkar apne area me booking le sakte hain — mini truck, pickup, loading gaadi, sab ke liye kaam milega.\n\n👇 Neeche *Download App* button se app install karke apna registration pura karein.\n\nKoi sawal ho to *Chat With Us* button dabayein — hamari team aapse yahin chat karegi. 💬\n\n— *Team Shifter Online*",
+  },
+  {
     id: "shifter_partner_app_invite",
     name: "shifter_partner_app_invite",
     metaTemplateName: "shifter_partner_app_invite",
