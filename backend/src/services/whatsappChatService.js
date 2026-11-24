@@ -94,9 +94,7 @@ async function resolveContactInfo(phone, fallbackName = null) {
       where: {
         OR: [
           { fmobile: ten },
-          { mobile: ten },
           { fmobile: `91${ten}` },
-          { mobile: `91${ten}` },
         ],
       },
       select: { id: true, name: true, title: true },
@@ -613,14 +611,16 @@ async function sendAdminMessage({
         }
       ];
     } else if (metaTemplateName === "shifter_partner_app_invite" && (!components || components.length === 0)) {
-      const recipientName = rawThread?.contact_name || "Driver Partner";
+      const rawName = rawThread?.contact_name || "";
+      const isPhoneOnly = /^\+?\d+$/.test(rawName.trim());
+      const recipientName = (rawName && !isPhoneOnly) ? rawName.trim() : "Driver Partner";
       components = [
         {
           type: "header",
           parameters: [
             {
               type: "image",
-              image: { link: "https://shifteronline.com/logo.png" }
+              image: { link: "https://scontent.whatsapp.net/v/t61.29466-34/927313548_1135875032581293_2499839226674363177_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=yIrYL8pT534Q7kNvwEVtQh0&_nc_oc=AdoBMygOU4968PBH1BGMMLFAMkQoe-qGKRqX1MkZ0DQDPv-14fBxzhHNoAxLzn2ZUMKw9a1p_-u-XEWTFdo-Ow4N&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=Rpx5M2Yg9mnJLJsCu1tGmQ&_nc_tpa=Q5bMBQKlS_H_dLX8312P7hiC4mpwi17iD0aSsQXkNkR1W8YtlwY1gvqjC9YQbt39Gwca-KHoQWQinWVg9A&oh=01_Q5Aa6AHsV35MTEq2RLnCLYCaSYNitLuDOgg8k0WTbOGyqWw-0g&oe=6B2A9FD3" }
             }
           ]
         },
