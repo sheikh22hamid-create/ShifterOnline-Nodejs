@@ -5,6 +5,32 @@ import { useToast } from '../context/ToastContext'
 import useApiQuery from '../hooks/useApiQuery'
 import Badge from '../components/common/Badge'
 import { formatDateTime } from '../utils/format'
+import { resolveImageUrl } from '../utils/imageUrl'
+
+// The driver supplies the on-site photo, so `extra_photo` is attacker-controlled. Only render it as a
+// clickable link when it resolves to an https URL on OUR OWN image host (relative paths resolve there;
+// a javascript:/data:/http:/foreign-https value does not and is shown as inert text — no XSS, no
+// phishing). The allowed host is derived from the same base resolveImageUrl() uses, so it tracks env.
+const IMAGE_BASE = import.meta.env.VITE_IMAGE_BASE_URL || 'https://dev-api.shifteronline.com'
+let ALLOWED_PHOTO_HOST = ''
+try {
+  ALLOWED_PHOTO_HOST = new URL(IMAGE_BASE).hostname
+} catch {
+  ALLOWED_PHOTO_HOST = ''
+}
+
+function safePhotoUrl(raw) {
+  if (!raw) return null
+  const resolved = resolveImageUrl(String(raw))
+  if (!resolved) return null
+  try {
+    const u = new URL(resolved)
+    if (u.protocol === 'https:' && u.hostname === ALLOWED_PHOTO_HOST) return u.href
+  } catch {
+    return null
+  }
+  return null
+}
 
 // Loading/Unloading labour dispute queue (spec 2026-11-24, Phase 1). Per-city pending disputes with
 // the evidence an executive needs — the customer's declared snapshot, any on-site correction + photo,
@@ -121,9 +147,15 @@ function DisputeCard({ dispute, onResolved }) {
       </div>
 
       {dispute.extra_photo ? (
-        <a href={dispute.extra_photo} target="_blank" rel="noreferrer" className="text-[13px] font-semibold" style={{ color: 'var(--brand)' }}>
-          Driver ka photo dekhein ↗
-        </a>
+        safePhotoUrl(dispute.extra_photo) ? (
+          <a href={safePhotoUrl(dispute.extra_photo)} target="_blank" rel="noreferrer noopener" className="text-[13px] font-semibold" style={{ color: 'var(--brand)' }}>
+            Driver ka photo dekhein ↗
+          </a>
+        ) : (
+          <div className="text-[12px]" style={{ color: 'var(--ink-faint)' }}>
+            Photo (open nahi kiya ja sakta — unverified link): <span style={{ color: 'var(--ink-muted)' }}>{String(dispute.extra_photo)}</span>
+          </div>
+        )
       ) : null}
 
       <textarea
