@@ -30,6 +30,7 @@ const { getModel1MissLimit, getModel1SuspensionHours } = require("./model1Suspen
 const orderStage = require("./orderStageService");
 const tierRules = require("./tierPenaltyRules");
 const tierPenalty = require("./tierPenaltyService");
+const labourDispatch = require("./labourDispatch");
 const driverOrderEvents = require("./driverOrderEventService");
 
 /** orderId -> { timers: Set<Timeout>, tiers: number[] } */
@@ -145,6 +146,7 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
       r.rlats AS rlats,
       r.rlongs AS rlongs,
       r.fcm_token AS fcm_token,
+      r.labour_mode AS labour_mode,
       (6371 * ACOS(
         LEAST(1, GREATEST(-1,
           COS(RADIANS(${Number(order.plat)})) * COS(RADIANS(CAST(r.rlats AS DECIMAL(10,6)))) *
@@ -238,6 +240,13 @@ async function selectEligibleDrivers(order, packageId, excludeRiderIds, limit = 
   // but re-checking in JS means the exclusion is guaranteed by this
   // function's return value regardless of how the query was built.
   let eligible = rows.filter((row) => !excludeSet.has(Number(row.rider_id)));
+  // Loading/Unloading (spec 2026-11-24): if this order needs labour, only offer it to drivers who
+  // opted into that level — drive_only/light_only are filtered out BEFORE the offer, so they never
+  // decline it and never take a dispatch penalty for declining.
+  const labourLevel = labourDispatch.labourLevelOf(order);
+  if (labourLevel !== "none") {
+    eligible = eligible.filter((row) => labourDispatch.driverCanTakeLabourOrder(row.labour_mode, labourLevel));
+  }
   if (routeConfig.enabled) eligible = await favoriteRoutes.matchCandidates(order, eligible, routeConfig);
   // Go to Home: drivers whose route to home passes the order's drop go first; everyone else keeps the order above.
   if (goToHomeActive) eligible = await goToHome.prioritize(order, eligible);

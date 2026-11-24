@@ -283,6 +283,22 @@ async function setBodyType(req, res) {
   }
 }
 
+/** Sets the rider's loading/unloading opt-in (spec 2026-11-24): drive_only | light_only | full_loader. */
+async function setLabourMode(req, res) {
+  try {
+    const { rider_id, labour_mode } = req.body;
+    const mode = String(labour_mode || "").toLowerCase();
+    if (!rider_id || !["drive_only", "light_only", "full_loader"].includes(mode)) {
+      return res.status(400).json({ Result: false, msg: "rider_id and valid labour_mode ('drive_only', 'light_only', 'full_loader') are required" });
+    }
+    await prisma.tbl_rider.update({ where: { id: Number(rider_id) }, data: { labour_mode: mode } });
+    return res.status(200).json({ Result: true, msg: "Labour mode updated successfully", labour_mode: mode });
+  } catch (err) {
+    logger.error("setLabourMode failed:", err);
+    return res.status(500).json({ Result: false, msg: "Internal server error" });
+  }
+}
+
 async function setStatus(req, res) {
   try {
     const { rider_id, a_status, device_id } = req.body;
@@ -725,6 +741,7 @@ module.exports = {
   getDeliveryTypes,
   setDeliveryType,
   setBodyType,
+  setLabourMode,
   packageListForDriver,
   setStatus,
   updateLocation,
