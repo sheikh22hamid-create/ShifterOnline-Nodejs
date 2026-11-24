@@ -63,6 +63,7 @@ const FreeBookingOffer = lazy(() => import('./pages/FreeBookingOffer'))
 const BookingGuarantee = lazy(() => import('./pages/BookingGuarantee'))
 const ExecutiveWorkspace = lazy(() => import('./pages/ExecutiveWorkspace'))
 const GuaranteeWorkload = lazy(() => import('./pages/GuaranteeWorkload'))
+const LabourDisputes = lazy(() => import('./pages/LabourDisputes'))
 const OrderSearchSettings = lazy(() => import('./pages/OrderSearchSettings'))
 const TieredDispatch = lazy(() => import('./pages/TieredDispatch'))
 const DriverPerformance = lazy(() => import('./pages/DriverPerformance'))
@@ -112,6 +113,7 @@ function App() {
             <Route path="/booking-guarantee" element={<BookingGuarantee />} />
             <Route path="/guarantee/my-cases" element={<Gated roles={['executive']}><ExecutiveWorkspace /></Gated>} />
             <Route path="/guarantee/workload" element={<Gated roles={['superadmin', 'admin']}><GuaranteeWorkload /></Gated>} />
+            <Route path="/labour/disputes" element={<Gated roles={['superadmin', 'admin', 'executive']}><LabourDisputes /></Gated>} />
             <Route path="/order-search" element={<OrderSearchSettings />} />
             <Route path="/tiered-dispatch" element={<TieredDispatch />} />
             <Route path="/driver-performance" element={<DriverPerformance />} />
