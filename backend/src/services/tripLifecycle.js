@@ -24,6 +24,7 @@ const earlyDropService = require("./earlyDropService");
 const pickupEtaService = require("./pickupEtaService");
 const settlementSettings = require("./settlementSettings");
 const settlementService = require("./settlementService");
+const labourEscrowService = require("./labourEscrowService");
 const receiverPayService = require("./receiverPayService");
 const receiverPaySettings = require("./receiverPaySettings");
 const receiverPayCalc = require("./receiverPayCalc");
@@ -62,8 +63,21 @@ function notifyAdminStatus(order) {
         whatsappNotifications.notifyTripStarted(orderId);
       } else if (status === 5) {
         whatsappNotifications.notifyTripCompleted(orderId);
+        // Labour escrow: release the held labour to the driver on completion (frozen while a dispute
+        // is open). Only when this order actually holds labour — skips the 99% that don't. Idempotent
+        // central backstop so no completion path leaves labour money stuck. (spec 2026-11-24)
+        if (order.labour_status === "held") {
+          labourEscrowService.releaseLabourOnComplete({ orderId })
+            .catch((err) => logger.error(`labour release backstop order ${orderId}: ${err.message}`));
+        }
       } else if (status === 4) {
         whatsappNotifications.notifyOrderCancelled(orderId, order.cancel_reason);
+        // Labour escrow: refund the held labour to the customer on any cancel. Only when held; a
+        // repeat/other-path cancel is a no-op via the status claim. (spec 2026-11-24)
+        if (order.labour_status === "held") {
+          labourEscrowService.refundLabourOnCancel({ orderId })
+            .catch((err) => logger.error(`labour refund backstop order ${orderId}: ${err.message}`));
+        }
       }
     }
   } catch (err) {
@@ -1226,6 +1240,13 @@ async function updateStatus(orderId, riderId, status, opts = {}) {
     });
 
     notifyAdminStatus({ id: orderId, city_id: order.city_id, order_status: 5, o_status: "Completed", rid: riderId });
+    // Labour escrow: release the held labour to the driver on completion. Self-guarding (no-op unless
+    // held) and frozen while a dispute is open; explicit here because the notify object above is
+    // synthetic and carries no labour_status. Idempotent. (spec 2026-11-24)
+    if (order.labour_status === "held") {
+      labourEscrowService.releaseLabourOnComplete({ orderId })
+        .catch((err) => logger.error(`labour release order ${orderId}: ${err.message}`));
+    }
     if (progress?.automation_enabled) await require('./tripEventNotifier').recordCompletion(order);
     return {
       success: true, order_status: 5, o_status: "Completed",

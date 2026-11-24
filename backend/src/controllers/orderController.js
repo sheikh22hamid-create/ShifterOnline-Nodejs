@@ -5,7 +5,8 @@ const prisma = require("../config/db");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const pricingEngine = require("../services/pricingEngine");
 const labourSettings = require("../services/labourSettings");
-const { labourResponse } = require("../services/labourPricing");
+const { labourResponse, computeLabour } = require("../services/labourPricing");
+const labourEscrowService = require("../services/labourEscrowService");
 const tripLifecycle = require("../services/tripLifecycle");
 const orderFareHistory = require("../services/orderFareHistory");
 const dispatchManager = require("../services/dispatchManager");
@@ -300,6 +301,9 @@ async function createOrderCore({
   // Main Area titles (spec 2026-11-14): optional titles the client already knows; sanitised by the resolver, which
   // otherwise reverse-geocodes the coordinates. Never blocks the booking.
   clientPickupTitle, clientDropTitle,
+  // Loading/Unloading labour (spec 2026-11-24): { mode, heavyItem, legs:[{role,size,floor,lift,qty,access}] }.
+  // The amount is recomputed server-side; a client-sent amount is ignored.
+  labour = null,
 }) {
   if (
     !uid ||
@@ -836,6 +840,25 @@ async function createOrderCore({
     }
   }
 
+  // Loading/Unloading labour (spec 2026-11-24): recompute the charge server-side from the declared
+  // inputs (never trust a client-sent amount) and hold it in escrow. Never fails an already-created
+  // booking — without it the ride is simply a normal booking with no labour.
+  order.labour = null;
+  if (labour && Array.isArray(labour.legs) && labour.legs.length) {
+    try {
+      const lconfig = await labourSettings.getLabourConfig(orderCityId);
+      const r = computeLabour({ mode: labour.mode, heavyItem: labour.heavyItem, legs: labour.legs }, lconfig);
+      if (!r.disabled && !r.labourOverCap && r.labourCharge > 0) {
+        await labourEscrowService.holdLabour({
+          orderId: order.id, mode: labour.mode, amount: r.labourCharge, declaredJson: labour,
+        });
+        order.labour = { charge: r.labourCharge, status: "held" };
+      }
+    } catch (err) {
+      logger.error(`createOrderCore: labour hold failed for order ${order.id}:`, err);
+    }
+  }
+
   // Wallet-paid booking: the app already debited the fare (remark "Delivery
   // payment", no order id) just before this call. Tie that debit to this order
   // so a cancel / no-driver outcome can refund exactly what was paid.
@@ -976,6 +999,7 @@ async function createOrder(req, res) {
       sendReceiverWhatsapp: send_receiver_whatsapp === true || send_receiver_whatsapp === "true" || send_receiver_whatsapp === 1 || send_receiver_whatsapp === "1",
       freeBooking: free_booking === true || free_booking === "true" || free_booking === 1 || free_booking === "1",
       clientPickupTitle: pickup_title, clientDropTitle: drop_title, gstNumber: gst_number || null,
+      labour: req.body?.labour ?? null,
     });
 
     if (!result.ok && result.code === "VALIDATION") {
