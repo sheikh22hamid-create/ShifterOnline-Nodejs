@@ -346,21 +346,33 @@ model pkg_order {
   body_type              String?            @default("any") @db.VarChar(20)
   customise_order_id     Int?
   covered_charge         Decimal?           @default(0.00) @db.Decimal(10, 2)
+  // Loading/Unloading labour (spec 2026-11-24, Phase 1 Model A). Dynamic, customer-declared,
+  // escrowed, driver-paid — distinct from the static rate-card loading_charge/unloading_charge above.
+  labour_opted             Boolean            @default(false)
+  labour_mode              String?            @db.VarChar(10)
+  labour_charge_amount     Decimal            @default(0.00) @db.Decimal(10, 2)
+  labour_declared_json     String?            @db.Text
+  labour_extra_amount      Decimal            @default(0.00) @db.Decimal(10, 2)
+  labour_extra_approved    Boolean            @default(false)
+  labour_extra_photo       String?            @db.VarChar(255)
+  labour_extra_json        String?            @db.Text
+  labour_status            String             @default("none") @db.VarChar(12)
   // Set when driverTripService.progressTrip reprices the trip against
   // pkg_order_wait_timer.otp_verify_lat/lng (where the driver actually was
   // when they confirmed the pickup OTP), because that point differed
   // materially (pickup_otp_mismatch_flag_m app_setting) from the last
   // confirmed pickup point — flags the move for admin review since it
   // happened without an explicit customer pickup-change confirmation.
-  pickup_otp_mismatch_flag Boolean           @default(false)
+  pickup_otp_mismatch_flag Boolean            @default(false)
 
-  next_day_live_at         DateTime? @db.DateTime(0)
-  next_day_stage           String?   @db.VarChar(10)
-  next_day_discount_amount Decimal?  @db.Decimal(10, 2)
+  next_day_live_at          DateTime? @db.DateTime(0)
+  next_day_stage            String?   @db.VarChar(10)
+  next_day_discount_amount  Decimal?  @db.Decimal(10, 2)
   // Low Fare Booking (spec 2026-10-27): Model-1 fare, the admin discount applied at booking time, and the window's end.
-  next_day_model1_fare       Decimal?  @db.Decimal(10, 2)
-  next_day_discount_percent  Decimal?  @db.Decimal(5, 2)
-  next_day_live_until        DateTime? @db.DateTime(0)
+  next_day_model1_fare      Decimal?  @db.Decimal(10, 2)
+  next_day_discount_percent Decimal?  @db.Decimal(5, 2)
+  next_day_live_until       DateTime? @db.DateTime(0)
+
   @@index([rid, order_status], map: "idx_rid_status")
   @@index([search_system, o_status, search_deadline_at], map: "idx_order_search")
 }
@@ -450,21 +462,21 @@ model pkg_order_fare_history {
 }
 
 model pkg_order_wait_timer {
-  id                  Int       @id @default(autoincrement())
-  order_id            Int
-  rid                 Int
-  pickup_wait_start   DateTime? @db.DateTime(0)
-  pickup_wait_end     DateTime? @db.DateTime(0)
-  pickup_wait_seconds Int?      @default(0)
-  drop_wait_start     DateTime? @db.DateTime(0)
-  drop_wait_end       DateTime? @db.DateTime(0)
-  drop_wait_seconds   Int?      @default(0)
-  total_wait_seconds  Int?      @default(0)
-  created_at          DateTime? @db.DateTime(0)
-  updated_at          DateTime? @db.DateTime(0)
-  pickup_distance     Decimal?  @db.Decimal(10, 2)
-  drop_distance       Decimal?  @db.Decimal(10, 2)
-  total_distance      Decimal?  @db.Decimal(10, 2)
+  id                         Int       @id @default(autoincrement())
+  order_id                   Int
+  rid                        Int
+  pickup_wait_start          DateTime? @db.DateTime(0)
+  pickup_wait_end            DateTime? @db.DateTime(0)
+  pickup_wait_seconds        Int?      @default(0)
+  drop_wait_start            DateTime? @db.DateTime(0)
+  drop_wait_end              DateTime? @db.DateTime(0)
+  drop_wait_seconds          Int?      @default(0)
+  total_wait_seconds         Int?      @default(0)
+  created_at                 DateTime? @db.DateTime(0)
+  updated_at                 DateTime? @db.DateTime(0)
+  pickup_distance            Decimal?  @db.Decimal(10, 2)
+  drop_distance              Decimal?  @db.Decimal(10, 2)
+  total_distance             Decimal?  @db.Decimal(10, 2)
   // Snapshot of where the driver actually was when they confirmed the
   // pickup OTP. Always recorded for reporting; driverTripService's mismatch
   // check additionally reprices the trip against this point when it
@@ -472,27 +484,27 @@ model pkg_order_wait_timer {
   // plong) and sets pkg_order.pickup_otp_mismatch_flag so an admin can
   // review moves that happened without an explicit customer pickup-change
   // confirmation.
-  otp_verify_lat      String?   @db.VarChar(30)
-  otp_verify_lng      String?   @db.VarChar(30)
-  otp_verify_at       DateTime? @db.DateTime(0)
+  otp_verify_lat             String?   @db.VarChar(30)
+  otp_verify_lng             String?   @db.VarChar(30)
+  otp_verify_at              DateTime? @db.DateTime(0)
   // Set once, the very first time this order's wait-timer row is created
   // (the first 1->2 arrival). Never touched by any later pause/resume or
   // small-move relocation cycle - this is what the relocation ceiling sweep
   // (tripLifecycle.sweepPickupRelocationCeiling) measures against, distinct
   // from pickup_wait_start which DOES get cleared on every pause.
-  first_arrival_at    DateTime? @db.DateTime(0)
-  drop_arrived_at     DateTime? @db.DateTime(0)
+  first_arrival_at           DateTime? @db.DateTime(0)
+  drop_arrived_at            DateTime? @db.DateTime(0)
   // Wait time banked across a pickup-location change while the driver was
   // already parked at the old pickup point — see orderPickupService and
   // sql/20260929_pickup_change_wait_banking.sql.
-  pickup_wait_banked_seconds Int @default(0)
+  pickup_wait_banked_seconds Int       @default(0)
   // Loading-wait phase: starts the moment the OTP is verified (driver
   // hasn't yet tapped "Pickup Complete"), ends when pickup_complete fires
   // (manual tap or auto-trigger on leaving the pickup vicinity). Billed at
   // trip completion alongside pickup_wait_seconds/drop_wait_seconds - see
   // tripLifecycle.js's waiting-charge calc.
-  pickup_load_wait_start   DateTime? @db.DateTime(0)
-  pickup_load_wait_seconds Int       @default(0)
+  pickup_load_wait_start     DateTime? @db.DateTime(0)
+  pickup_load_wait_seconds   Int       @default(0)
 
   @@unique([order_id, rid], map: "order_rid_unique")
   @@unique([order_id, rid], map: "uniq_order_rid")
@@ -1062,16 +1074,16 @@ model tbl_referral {
 }
 
 model tbl_referral_point_log {
-  id            Int      @id @default(autoincrement())
-  user_id       Int
-  user_type     String   @default("USER") @db.VarChar(10)
-  points        Int
-  txn_type      String   @db.VarChar(10)
-  source        String   @db.VarChar(30)
-  ref_id        Int      @default(0)
-  balance_after Int      @default(0)
-  note          String?  @db.VarChar(255)
-  created_at    DateTime @db.DateTime(0)
+  id              Int       @id @default(autoincrement())
+  user_id         Int
+  user_type       String    @default("USER") @db.VarChar(10)
+  points          Int
+  txn_type        String    @db.VarChar(10)
+  source          String    @db.VarChar(30)
+  ref_id          Int       @default(0)
+  balance_after   Int       @default(0)
+  note            String?   @db.VarChar(255)
+  created_at      DateTime  @db.DateTime(0)
   // Points expiry: set on credit rows; expiry rows (txn_type "expiry") point back at their credit via origin_log_id.
   activity        String?   @db.VarChar(30)
   expires_at      DateTime? @db.DateTime(0)
@@ -1113,17 +1125,17 @@ model tbl_driver_lead {
 // and follow up on drivers who verified but abandoned the registration form,
 // separate from tbl_driver_lead which is the referral-program queue.
 model tbl_registration_lead {
-  id                  Int       @id @default(autoincrement())
-  phone               String    @unique(map: "uniq_registration_lead_phone") @db.VarChar(20)
-  device_id           String?   @db.VarChar(191)
-  status              String    @default("pending") @db.VarChar(15)
-  otp_verified_at     DateTime  @db.DateTime(0)
+  id                    Int       @id @default(autoincrement())
+  phone                 String    @unique(map: "uniq_registration_lead_phone") @db.VarChar(20)
+  device_id             String?   @db.VarChar(191)
+  status                String    @default("pending") @db.VarChar(15)
+  otp_verified_at       DateTime  @db.DateTime(0)
   last_reminder_sent_at DateTime? @db.DateTime(0)
-  reminder_count      Int       @default(0)
-  registered_rider_id Int?
-  registered_at       DateTime? @db.DateTime(0)
-  created_at          DateTime  @default(now()) @db.DateTime(0)
-  updated_at          DateTime  @updatedAt @db.DateTime(0)
+  reminder_count        Int       @default(0)
+  registered_rider_id   Int?
+  registered_at         DateTime? @db.DateTime(0)
+  created_at            DateTime  @default(now()) @db.DateTime(0)
+  updated_at            DateTime  @updatedAt @db.DateTime(0)
 
   @@index([status], map: "idx_registration_lead_status")
   @@index([otp_verified_at], map: "idx_registration_lead_otp_verified_at")
@@ -1165,6 +1177,8 @@ model tbl_rider {
   trial_orders_allowed   Int?
   trial_orders_completed Int                            @default(0)
   body_type              String                         @default("both") @db.VarChar(20)
+  // Loading/Unloading opt-in (spec 2026-11-24): drive_only never gets labour jobs; light_only only light/ground.
+  labour_mode            String                         @default("drive_only") @db.VarChar(12)
   fmobile                String                         @db.Text
   smobile                String?                        @db.Text
   nationality            String?                        @db.Text
@@ -1254,35 +1268,35 @@ model tbl_text_answer {
 }
 
 model tbl_user {
-  id               Int                 @id @default(autoincrement())
-  name             String              @db.Text
-  email            String              @db.Text
-  mobile           Float
-  password         String              @db.Text
-  ccode            String              @db.Text
-  status           Int                 @default(1)
-  city_id          Int?
-  rdate            DateTime            @db.DateTime(0)
-  r_img            String?             @db.Text
-  otp              Int?
-  wallet           Decimal             @default(0.00) @db.Decimal(10, 2)
-  fcm_token        String?             @db.VarChar(2048)
-  plan_type        tbl_user_plan_type? @default(general)
-  device_id        String?             @db.VarChar(255)
-  reffer_code      String?             @db.VarChar(255)
-  refer_by         String?             @db.VarChar(255)
-  refferal_code    String              @db.VarChar(255)
-  refer_paid       Boolean             @default(false)
-  wallet_points    Int?
-  referral_code    String?             @unique(map: "uniq_user_ref_code") @db.VarChar(20)
-  referred_by      Int                 @default(0)
-  referred_by_type String              @default("") @db.VarChar(10)
-  referral_points  Int                 @default(0)
-  free_booking_locked        Boolean   @default(false)
-  free_booking_locked_at     DateTime? @db.DateTime(0)
-  guarantee_locked           Boolean   @default(false)
-  guarantee_locked_at        DateTime? @db.DateTime(0)
-  free_booking_just_unlocked Boolean   @default(false)
+  id                         Int                 @id @default(autoincrement())
+  name                       String              @db.Text
+  email                      String              @db.Text
+  mobile                     Float
+  password                   String              @db.Text
+  ccode                      String              @db.Text
+  status                     Int                 @default(1)
+  city_id                    Int?
+  rdate                      DateTime            @db.DateTime(0)
+  r_img                      String?             @db.Text
+  otp                        Int?
+  wallet                     Decimal             @default(0.00) @db.Decimal(10, 2)
+  fcm_token                  String?             @db.VarChar(2048)
+  plan_type                  tbl_user_plan_type? @default(general)
+  device_id                  String?             @db.VarChar(255)
+  reffer_code                String?             @db.VarChar(255)
+  refer_by                   String?             @db.VarChar(255)
+  refferal_code              String              @db.VarChar(255)
+  refer_paid                 Boolean             @default(false)
+  wallet_points              Int?
+  referral_code              String?             @unique(map: "uniq_user_ref_code") @db.VarChar(20)
+  referred_by                Int                 @default(0)
+  referred_by_type           String              @default("") @db.VarChar(10)
+  referral_points            Int                 @default(0)
+  free_booking_locked        Boolean             @default(false)
+  free_booking_locked_at     DateTime?           @db.DateTime(0)
+  guarantee_locked           Boolean             @default(false)
+  guarantee_locked_at        DateTime?           @db.DateTime(0)
+  free_booking_just_unlocked Boolean             @default(false)
 }
 
 model tbl_user_device {
@@ -1412,7 +1426,7 @@ model tbl_ride_amount_reward {
   id               Int      @id @default(autoincrement())
   min_amount       Decimal  @db.Decimal(10, 2)
   plan_id          Int
-  max_customers    Int?     // null or 0 = unlimited customers
+  max_customers    Int? // null or 0 = unlimited customers
   claimed_count    Int      @default(0)
   status           Boolean  @default(true)
   created_by_admin Int
@@ -1424,12 +1438,12 @@ model tbl_ride_amount_reward {
 
 /// Evaluation and double-claim prevention for ride amount rewards
 model tbl_ride_amount_reward_applied {
-  id         Int                                    @id @default(autoincrement())
+  id         Int                                   @id @default(autoincrement())
   user_id    Int
   reward_id  Int
-  status     tbl_ride_amount_reward_applied_status  @default(applied)
+  status     tbl_ride_amount_reward_applied_status @default(applied)
   order_id   Int?
-  applied_at DateTime                               @default(now()) @db.Timestamp(0)
+  applied_at DateTime                              @default(now()) @db.Timestamp(0)
 
   @@unique([user_id, reward_id], map: "uniq_amount_reward_applied_user_reward")
 }
@@ -1460,14 +1474,14 @@ model tbl_vechicle {
 }
 
 model tbl_vehicle_details {
-  id                Int     @id @default(autoincrement())
-  rider_id          Int
-  type_id           Int
-  reg_num           String  @db.Text
-  v_pic             String  @db.Text
-  status            Int     @default(0)
-  rejection_reason  String? @db.VarChar(255)
-  name_mismatch     Boolean @default(false)
+  id               Int     @id @default(autoincrement())
+  rider_id         Int
+  type_id          Int
+  reg_num          String  @db.Text
+  v_pic            String  @db.Text
+  status           Int     @default(0)
+  rejection_reason String? @db.VarChar(255)
+  name_mismatch    Boolean @default(false)
 }
 
 model tbl_wallet_history {
@@ -1975,48 +1989,72 @@ enum pkg_order_o_status {
 }
 
 model order_settlement {
-  id                  Int       @id @default(autoincrement())
-  order_id            Int       @unique(map: "uq_order_settlement_order")
+  id                  Int                      @id @default(autoincrement())
+  order_id            Int                      @unique(map: "uq_order_settlement_order")
   uid                 Int
   rid                 Int
   city_id             Int?
-  amount_due          Decimal   @db.Decimal(10, 2)
-  fare                Decimal   @db.Decimal(10, 2)
-  commission_amount   Decimal   @default(0.00) @db.Decimal(10, 2)
-  per_trip_charge     Decimal   @default(0.00) @db.Decimal(10, 2)
-  prepaid_amount      Decimal   @default(0.00) @db.Decimal(10, 2)
-  status              String    @default("pending") @db.VarChar(20)
-  method              String?   @db.VarChar(10)
-  wallet_effect       String    @default("none") @db.VarChar(10)
-  effect_seq          Int       @default(0)
-  customer_choice     String?   @db.VarChar(10)
-  razorpay_order_id   String?   @db.VarChar(64)
-  razorpay_payment_id String?   @db.VarChar(64)
-  pending_since       DateTime  @db.DateTime(0)
-  confirmed_at        DateTime? @db.DateTime(0)
-  confirmed_by        String?   @db.VarChar(20)
-  last_reminder_at    DateTime? @db.DateTime(0)
-  reminders_sent      Int       @default(0)
-  escalated_at        DateTime? @db.DateTime(0)
-  dispute_reason      String?   @db.Text
-  dispute_raised_by   String?   @db.VarChar(10)
-  dispute_raised_at   DateTime? @db.DateTime(0)
+  amount_due          Decimal                  @db.Decimal(10, 2)
+  fare                Decimal                  @db.Decimal(10, 2)
+  commission_amount   Decimal                  @default(0.00) @db.Decimal(10, 2)
+  per_trip_charge     Decimal                  @default(0.00) @db.Decimal(10, 2)
+  prepaid_amount      Decimal                  @default(0.00) @db.Decimal(10, 2)
+  status              String                   @default("pending") @db.VarChar(20)
+  method              String?                  @db.VarChar(10)
+  wallet_effect       String                   @default("none") @db.VarChar(10)
+  effect_seq          Int                      @default(0)
+  customer_choice     String?                  @db.VarChar(10)
+  razorpay_order_id   String?                  @db.VarChar(64)
+  razorpay_payment_id String?                  @db.VarChar(64)
+  pending_since       DateTime                 @db.DateTime(0)
+  confirmed_at        DateTime?                @db.DateTime(0)
+  confirmed_by        String?                  @db.VarChar(20)
+  last_reminder_at    DateTime?                @db.DateTime(0)
+  reminders_sent      Int                      @default(0)
+  escalated_at        DateTime?                @db.DateTime(0)
+  dispute_reason      String?                  @db.Text
+  dispute_raised_by   String?                  @db.VarChar(10)
+  dispute_raised_at   DateTime?                @db.DateTime(0)
   resolved_by         Int?
-  resolved_at         DateTime? @db.DateTime(0)
-  resolve_note        String?   @db.Text
-  created_at          DateTime  @db.DateTime(0)
-  updated_at          DateTime  @db.DateTime(0)
-  payer               String    @default("customer") @db.VarChar(10)
-  receiver_markup     Decimal   @default(0.00) @db.Decimal(10, 2)
-  advance_held        Decimal   @default(0.00) @db.Decimal(10, 2)
-  reversal_shortfall  Decimal   @default(0.00) @db.Decimal(10, 2)
-  receiver_credited   Boolean   @default(false)
+  resolved_at         DateTime?                @db.DateTime(0)
+  resolve_note        String?                  @db.Text
+  created_at          DateTime                 @db.DateTime(0)
+  updated_at          DateTime                 @db.DateTime(0)
+  payer               String                   @default("customer") @db.VarChar(10)
+  receiver_markup     Decimal                  @default(0.00) @db.Decimal(10, 2)
+  advance_held        Decimal                  @default(0.00) @db.Decimal(10, 2)
+  reversal_shortfall  Decimal                  @default(0.00) @db.Decimal(10, 2)
+  receiver_credited   Boolean                  @default(false)
   events              order_settlement_event[]
 
   @@index([status, pending_since], map: "idx_order_settlement_status")
   @@index([uid, status], map: "idx_order_settlement_uid")
   @@index([rid, status], map: "idx_order_settlement_rid")
   @@index([city_id, status], map: "idx_order_settlement_city")
+}
+
+// Loading/Unloading labour dispute (spec 2026-11-24). Raised by customer or driver; freezes the
+// labour escrow; resolved by an executive (release / refund / split). Mirrors the admin decide pattern.
+model labour_dispute {
+  id                    Int       @id @default(autoincrement())
+  order_id              Int
+  city_id               Int?
+  raised_by             String    @db.VarChar(10)
+  reason                String?   @db.Text
+  raised_at             DateTime  @default(now()) @db.DateTime(0)
+  status                String    @default("pending") @db.VarChar(12)
+  assigned_executive_id Int?
+  action                String?   @db.VarChar(10)
+  driver_amount         Decimal?  @db.Decimal(10, 2)
+  refund_amount         Decimal?  @db.Decimal(10, 2)
+  resolved_by           Int?
+  resolved_at           DateTime? @db.DateTime(0)
+  resolve_note          String?   @db.Text
+  created_at            DateTime  @default(now()) @db.DateTime(0)
+  updated_at            DateTime  @updatedAt @db.DateTime(0)
+
+  @@index([status, city_id], map: "idx_labour_dispute_queue")
+  @@index([order_id], map: "idx_labour_dispute_order")
 }
 
 model order_settlement_event {
@@ -2088,42 +2126,41 @@ model order_receiver_feedback {
   @@index([rider_id], map: "idx_order_receiver_feedback_rider")
 }
 
-
 // Free Booking Offer (spec 2026-10-06). One row per city; no row = offer OFF.
 model free_booking_setting {
-  city_id     Int       @id
-  enabled     Boolean   @default(false)
-  offer_start DateTime? @db.DateTime(0)
-  offer_end   DateTime? @db.DateTime(0)
+  city_id            Int       @id
+  enabled            Boolean   @default(false)
+  offer_start        DateTime? @db.DateTime(0)
+  offer_end          DateTime? @db.DateTime(0)
   // Successful referrals (made after the lock) a locked customer needs to unlock the offer again.
-  referrals_required Int @default(1)
+  referrals_required Int       @default(1)
   max_free_orders    Int?
   max_amount         Decimal?  @db.Decimal(10, 2)
   max_km             Decimal?  @db.Decimal(6, 2)
-  updated_by  Int?
-  updated_at  DateTime  @default(now()) @updatedAt @db.DateTime(0)
+  updated_by         Int?
+  updated_at         DateTime  @default(now()) @updatedAt @db.DateTime(0)
 }
 
 // System 2 (spec 2026-10-12): per-city search system, search window and guarantee settings. No row = defaults.
 model city_order_settings {
-  city_id                     Int      @id
-  search_system               Int      @default(1) @db.TinyInt
-  search_radius_km            Decimal? @db.Decimal(5, 2)
-  driver_search_seconds       Int?
-  guarantee_enabled           Boolean  @default(false)
-  admin_window_minutes        Int?
-  guarantee_referrals_required Int     @default(1)
-  guarantee_start_time        String?  @db.VarChar(5)
-  guarantee_end_time          String?  @db.VarChar(5)
-  exec_queue_enabled          Boolean  @default(false)
-  guarantee_recover_on_cancel Boolean  @default(false)
-  exec_auto_outside_search    Boolean  @default(false)
-  exec_default_capacity       Int      @default(5)
-  reminder_pct                Int      @default(50)
-  escalate_pct                Int      @default(75)
-  auto_reassign_idle_minutes  Int?
-  updated_by                  Int?
-  updated_at                  DateTime @default(now()) @updatedAt @db.DateTime(0)
+  city_id                      Int      @id
+  search_system                Int      @default(1) @db.TinyInt
+  search_radius_km             Decimal? @db.Decimal(5, 2)
+  driver_search_seconds        Int?
+  guarantee_enabled            Boolean  @default(false)
+  admin_window_minutes         Int?
+  guarantee_referrals_required Int      @default(1)
+  guarantee_start_time         String?  @db.VarChar(5)
+  guarantee_end_time           String?  @db.VarChar(5)
+  exec_queue_enabled           Boolean  @default(false)
+  guarantee_recover_on_cancel  Boolean  @default(false)
+  exec_auto_outside_search     Boolean  @default(false)
+  exec_default_capacity        Int      @default(5)
+  reminder_pct                 Int      @default(50)
+  escalate_pct                 Int      @default(75)
+  auto_reassign_idle_minutes   Int?
+  updated_by                   Int?
+  updated_at                   DateTime @default(now()) @updatedAt @db.DateTime(0)
 }
 
 // Vehicles (riders) the admin put in the offer pool, with a validity window.
@@ -2145,23 +2182,23 @@ model free_booking_pool {
 
 // One row per free booking: the audit record and the state machine.
 model free_booking_order {
-  id                   Int       @id @default(autoincrement())
-  order_id             Int       @unique(map: "uq_fbo_order")
-  user_id              Int
-  city_id              Int?
-  status               String    @db.VarChar(40)
-  not_eligible_reason  String?   @db.VarChar(60)
-  pool_rider_id        Int?
-  accepted_in_pool     Boolean   @default(false)
-  actual_fare          Decimal?  @db.Decimal(10, 2)
-  credit_amount        Decimal?  @db.Decimal(10, 2)
-  wallet_history_id    Int?
-  search_radius_km     Int?
-  premium_plan_id      Int?
-  premium_plan_amount  Decimal?  @db.Decimal(10, 2)
-  created_at           DateTime  @default(now()) @db.DateTime(0)
-  completed_at         DateTime? @db.DateTime(0)
-  credited_at          DateTime? @db.DateTime(0)
+  id                  Int       @id @default(autoincrement())
+  order_id            Int       @unique(map: "uq_fbo_order")
+  user_id             Int
+  city_id             Int?
+  status              String    @db.VarChar(40)
+  not_eligible_reason String?   @db.VarChar(60)
+  pool_rider_id       Int?
+  accepted_in_pool    Boolean   @default(false)
+  actual_fare         Decimal?  @db.Decimal(10, 2)
+  credit_amount       Decimal?  @db.Decimal(10, 2)
+  wallet_history_id   Int?
+  search_radius_km    Int?
+  premium_plan_id     Int?
+  premium_plan_amount Decimal?  @db.Decimal(10, 2)
+  created_at          DateTime  @default(now()) @db.DateTime(0)
+  completed_at        DateTime? @db.DateTime(0)
+  credited_at         DateTime? @db.DateTime(0)
 
   @@index([user_id, status], map: "idx_fbo_user_status")
   @@index([city_id, status], map: "idx_fbo_city_status")
@@ -2182,19 +2219,19 @@ model booking_guarantee_case {
   resolved_by_admin_id    Int?
   wallet_history_id       Int?
   refunds_done_at         DateTime? @db.DateTime(0)
-  city_id           Int?
-  owner_admin_id    Int?
-  owner_assigned_at DateTime? @db.DateTime(0)
-  queue_state       String?   @db.VarChar(20)
-  unassigned_reason String?   @db.VarChar(30)
-  first_action_at   DateTime? @db.DateTime(0)
-  last_action_at    DateTime? @db.DateTime(0)
-  reminded_at       DateTime? @db.DateTime(0)
-  escalated_at      DateTime? @db.DateTime(0)
-  last_alerted_at   DateTime? @db.DateTime(0)
+  city_id                 Int?
+  owner_admin_id          Int?
+  owner_assigned_at       DateTime? @db.DateTime(0)
+  queue_state             String?   @db.VarChar(20)
+  unassigned_reason       String?   @db.VarChar(30)
+  first_action_at         DateTime? @db.DateTime(0)
+  last_action_at          DateTime? @db.DateTime(0)
+  reminded_at             DateTime? @db.DateTime(0)
+  escalated_at            DateTime? @db.DateTime(0)
+  last_alerted_at         DateTime? @db.DateTime(0)
   // Automated outside-driver search (spec 2026-10-20): null | searching | exhausted, and the single-worker lease.
-  search_state       String?   @db.VarChar(15)
-  search_lease_until DateTime? @db.DateTime(0)
+  search_state            String?   @db.VarChar(15)
+  search_lease_until      DateTime? @db.DateTime(0)
 
   @@index([status, deadline_at], map: "idx_bgc_status_deadline")
   @@index([uid], map: "idx_bgc_uid")
@@ -2285,19 +2322,19 @@ model guarantee_outside_candidate {
 }
 
 model guarantee_candidate_distance {
-  candidate_id    Int      @id
+  candidate_id    Int       @id
   case_id         Int
   order_id        Int
   rider_id        Int
-  driver_lat      Decimal  @db.Decimal(10, 7)
-  driver_lng      Decimal  @db.Decimal(10, 7)
-  location_source String   @db.VarChar(20)
+  driver_lat      Decimal   @db.Decimal(10, 7)
+  driver_lng      Decimal   @db.Decimal(10, 7)
+  location_source String    @db.VarChar(20)
   location_at     DateTime? @db.DateTime(0)
-  location_approx Boolean  @default(false)
+  location_approx Boolean   @default(false)
   distance_m      Int
-  distance_unit   String   @db.VarChar(2)
-  distance_kind   String   @db.VarChar(10)
-  computed_at     DateTime @default(now()) @db.DateTime(0)
+  distance_unit   String    @db.VarChar(2)
+  distance_kind   String    @db.VarChar(10)
+  computed_at     DateTime  @default(now()) @db.DateTime(0)
 
   @@index([order_id], map: "idx_gcd_order")
 }
@@ -2372,7 +2409,6 @@ model order_cancel_request {
   @@index([status, created_at], map: "idx_ocr_status_created")
   @@index([order_id], map: "idx_ocr_order")
 }
-
 
 // Next-day order offers to Daily Drivers (spec 2026-10-13). One row per (order, driver) offer.
 model next_day_daily_offer {
