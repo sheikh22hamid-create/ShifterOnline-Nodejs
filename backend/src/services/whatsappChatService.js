@@ -580,7 +580,7 @@ async function sendAdminMessage({
 
     // Map template to Meta approved template name
     const foundTpl = WHATSAPP_TEMPLATES.find((t) => t.id === templateName || t.name === templateName || t.metaTemplateName === templateName);
-    let metaTemplateName = foundTpl?.metaTemplateName;
+    let metaTemplateName = foundTpl?.metaTemplateName || templateName;
 
     if (!metaTemplateName) {
       const lowerName = String(templateName).toLowerCase();

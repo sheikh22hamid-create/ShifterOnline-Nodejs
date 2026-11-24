@@ -57,6 +57,18 @@ const WHATSAPP_TEMPLATES = [
       "🚚 *Shifter Online Partner App*\nDriver App download karein: https://play.google.com/store/apps/details?id=com.shifter.driver\n\nNamaste {{1}} ji! 🙏\n\n*Shifter Online* ek online, on-demand logistics platform hai. Yahan customers apna saaman — parcel, goods aur house shifting — book karte hain, aur booking seedha partner drivers ko milti hai.\n\nAap bhi Partner App se judkar apne area me booking le sakte hain — mini truck, pickup, loading gaadi, sab ke liye kaam milega.\n\n👇 Neeche *Download App* button se app install karke apna registration pura karein.\n\nKoi sawal ho to *Chat With Us* button dabayein — hamari team aapse yahin chat karegi. 💬\n\n— *Team Shifter Online*",
   },
   {
+    id: "shifter_driver_incomplete_reg",
+    name: "shifter_driver_incomplete_reg",
+    metaTemplateName: "shifter_driver_incomplete_reg",
+    isMetaApproved: true,
+    title: "⚠️ Driver Incomplete Registration (Action & Buttons)",
+    category: "driver",
+    categoryLabel: "Driver Reminder",
+    description: "Nudge drivers with incomplete registration to complete RC/DL verification with direct buttons.",
+    message:
+      "Aapka *Shifter Online Driver* registration adhoora hai. Bas 2 minute me apni details aur RC/DL submit karke account activate karein aur daily orders lena shuru karein! 🚚💨\n\n📲 *Driver App* khol kar registration poora karein:\n👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\nKoi pareshani aaye to call karein: +91 9109114515\n— *Team Shifter Online*",
+  },
+  {
     id: "shifter_partner_app_invite",
     name: "shifter_partner_app_invite",
     metaTemplateName: "shifter_partner_app_invite",
@@ -170,19 +182,14 @@ const WHATSAPP_TEMPLATES = [
   {
     id: "incomplete_driver_registration",
     name: "incomplete_driver_registration",
-    metaTemplateName: "shifter_driver_onboard",
-    isMetaApproved: false,
+    metaTemplateName: "shifter_driver_incomplete_reg",
+    isMetaApproved: true,
     title: "⚠️ Driver Incomplete Registration Reminder",
     category: "driver",
     categoryLabel: "Driver Reminder",
     description: "Nudge drivers who entered OTP but haven't completed their registration.",
     message:
-      `Namaste Driver Partner! 🙏\n\n` +
-      `Aapka *Shifter Online Driver* registration adhoora hai. Bas 2 minute me apni details aur RC/DL submit karke account activate karein aur daily orders lena shuru karein! 🚚💨\n\n` +
-      `📲 *Driver App* khol kar registration poora karein:\n` +
-      `👉 ${DRIVER_APP_URL}\n\n` +
-      `Koi pareshani aaye to call karein: ${HELPLINE_NUMBER}\n` +
-      `— *Team Shifter Online*`,
+      "Aapka *Shifter Online Driver* registration adhoora hai. Bas 2 minute me apni details aur RC/DL submit karke account activate karein aur daily orders lena shuru karein! 🚚💨\n\n📲 *Driver App* khol kar registration poora karein:\n👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\nKoi pareshani aaye to call karein: +91 9109114515\n— *Team Shifter Online*",
   },
   {
     id: "customer_discount_offer",
