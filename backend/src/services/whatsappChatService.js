@@ -620,7 +620,7 @@ async function sendAdminMessage({
           parameters: [
             {
               type: "image",
-              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795527682/whatsapp_templates/shifter_partner_invite_banner.jpg" }
+              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795528911/whatsapp_templates/shifter_partner_app_invite_banner_v2.jpg" }
             }
           ]
         },
@@ -641,7 +641,7 @@ async function sendAdminMessage({
           parameters: [
             {
               type: "image",
-              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795527682/whatsapp_templates/shifter_partner_invite_banner.jpg" }
+              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795528911/whatsapp_templates/shifter_partner_app_invite_banner_v2.jpg" }
             }
           ]
         },
