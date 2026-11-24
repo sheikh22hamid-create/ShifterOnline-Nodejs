@@ -77,11 +77,17 @@ async function listForExecutive({ cityId }) {
 }
 
 /** Executive resolves: distribute the held total (release / refund / split). Money conserved. */
-async function resolveDispute({ disputeId, executiveId, action, driverAmount, note }) {
+async function resolveDispute({ disputeId, executiveId, actorRole, actorCityId, action, driverAmount, note }) {
   return prisma.$transaction(async (tx) => {
     const dispute = await tx.labour_dispute.findUnique({ where: { id: Number(disputeId) } });
     if (!dispute) throw httpError(404, "Dispute not found");
     if (dispute.status !== "pending") throw httpError(409, "Dispute already resolved");
+    // City scope: only a superadmin may resolve across cities; everyone else is bound to their own.
+    if (actorRole !== "superadmin") {
+      if (actorCityId == null || Number(dispute.city_id) !== Number(actorCityId)) {
+        throw httpError(403, "This dispute is outside your city scope");
+      }
+    }
 
     const order = await tx.pkg_order.findUnique({
       where: { id: Number(dispute.order_id) },

@@ -51,7 +51,14 @@ async function raiseDispute(req, res) {
 async function listDisputes(req, res) {
   try {
     const role = req.user?.role;
-    const cityId = role === "executive" ? req.user?.city_id : (req.query?.city_id ?? null);
+    // Only a superadmin may choose/omit the city filter; everyone else is bound to their own city.
+    let cityId;
+    if (role === "superadmin") {
+      cityId = req.query?.city_id ?? null;
+    } else {
+      cityId = req.user?.city_id;
+      if (cityId == null) return res.status(403).json({ Result: false, msg: "No city scope" });
+    }
     const rows = await labourDisputeService.listForExecutive({ cityId });
     return res.status(200).json({ Result: true, disputes: rows });
   } catch (err) {
@@ -64,7 +71,8 @@ async function resolveDispute(req, res) {
   try {
     const { action, driver_amount, note } = req.body;
     const r = await labourDisputeService.resolveDispute({
-      disputeId: req.params.id, executiveId: req.user?.id, action, driverAmount: driver_amount, note,
+      disputeId: req.params.id, executiveId: req.user?.id, actorRole: req.user?.role, actorCityId: req.user?.city_id,
+      action, driverAmount: driver_amount, note,
     });
     return res.status(200).json({ Result: true, ...r });
   } catch (err) {
