@@ -97,14 +97,14 @@ async function resolveContactInfo(phone, fallbackName = null) {
           { fmobile: `91${ten}` },
         ],
       },
-      select: { id: true, name: true, title: true },
+      select: { id: true, full_name: true, first_name: true, title: true },
     });
 
     if (rider) {
       return {
         user_type: "driver",
         user_id: rider.id,
-        contact_name: rider.title || rider.name || fallbackName || `Driver #${rider.id}`,
+        contact_name: rider.full_name || rider.first_name || rider.title || fallbackName || `Driver #${rider.id}`,
       };
     }
 
