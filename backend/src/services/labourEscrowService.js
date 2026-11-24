@@ -42,10 +42,13 @@ async function holdLabour({ orderId, mode, amount, declaredJson }) {
       if (dup) return { held: true, amount: amt, already: true };
 
       if (amt > 0) {
-        const user = await tx.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { wallet: true } });
-        const balance = Math.max(0, round2(user?.wallet) || 0);
-        if (balance < amt) return { held: false, reason: "insufficient_balance", balance, required: amt };
-        await tx.tbl_user.update({ where: { id: Number(order.uid) }, data: { wallet: { decrement: amt } } });
+        // Atomic conditional debit — decrement only if the balance still covers it, so two concurrent
+        // holds can never overdraft the wallet (no check-then-act race).
+        const debited = await tx.tbl_user.updateMany({
+          where: { id: Number(order.uid), wallet: { gte: amt } },
+          data: { wallet: { decrement: amt } },
+        });
+        if (debited.count !== 1) return { held: false, reason: "insufficient_balance", required: amt };
         await tx.tbl_wallet_history.create({
           data: {
             user_id: Number(order.uid), amount: amt, type: "debit",

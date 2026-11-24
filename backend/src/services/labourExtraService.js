@@ -14,28 +14,36 @@ const httpError = (statusCode, message) => Object.assign(new Error(message), { s
 
 /** Driver proposes an extra for a bigger-than-declared reality. Requires a photo. No money moves yet. */
 async function proposeExtra({ orderId, riderId, mode, heavyItem, legs, photo }) {
+  // Require the caller's identity (no silent skip) and bound the input.
+  if (riderId == null) throw httpError(400, "rider_id is required");
+  if (!Array.isArray(legs) || legs.length === 0) throw httpError(400, "legs are required");
+  if (legs.length > 10) throw httpError(400, "Too many legs");
+  if (!photo || !String(photo).trim()) throw httpError(400, "A photo of the real situation is required");
+
   const order = await prisma.pkg_order.findUnique({
     where: { id: Number(orderId) },
     select: { id: true, rid: true, city_id: true, labour_status: true, labour_charge_amount: true },
   });
   if (!order) throw httpError(404, "Order not found");
-  if (riderId != null && Number(order.rid) !== Number(riderId)) throw httpError(403, "Not your order");
+  if (Number(order.rid) !== Number(riderId)) throw httpError(403, "Not your order");
   if (!canAddExtra(order.labour_status)) throw httpError(409, "Labour is not in a state to add extra");
-  if (!photo || !String(photo).trim()) throw httpError(400, "A photo of the real situation is required");
 
   const config = await labourSettings.getLabourConfig(order.city_id);
   const delta = extraDelta({ mode, heavyItem, legs }, config, order.labour_charge_amount);
   if (delta <= 0) throw httpError(400, "The corrected load is not larger than what was declared");
 
-  await prisma.pkg_order.update({
-    where: { id: Number(orderId) },
+  // Atomic claim: only (re)propose while held AND not yet approved, so an already-approved (already
+  // collected) extra can never be overwritten with a larger amount and then re-approved without
+  // collecting the difference.
+  const claimed = await prisma.pkg_order.updateMany({
+    where: { id: Number(orderId), labour_status: "held", labour_extra_approved: false },
     data: {
       labour_extra_amount: delta,
       labour_extra_json: JSON.stringify({ mode, heavyItem: heavyItem === true, legs }),
       labour_extra_photo: String(photo).trim(),
-      labour_extra_approved: false,
     },
   });
+  if (claimed.count !== 1) throw httpError(409, "An extra was already approved for this order");
   return { proposed: true, extra: delta };
 }
 
@@ -47,7 +55,8 @@ async function approveExtra({ orderId, uid }) {
       select: { uid: true, labour_status: true, labour_extra_amount: true, labour_extra_approved: true },
     });
     if (!order) throw httpError(404, "Order not found");
-    if (uid != null && Number(order.uid) !== Number(uid)) throw httpError(403, "Not your order");
+    if (uid == null) throw httpError(400, "uid is required");
+    if (Number(order.uid) !== Number(uid)) throw httpError(403, "Not your order");
     if (!canApproveExtra({
       labourStatus: order.labour_status, extraApproved: order.labour_extra_approved, extraAmount: order.labour_extra_amount,
     })) {
@@ -58,10 +67,12 @@ async function approveExtra({ orderId, uid }) {
     const key = `labour_extra:${orderId}`;
     const dup = await tx.tbl_wallet_history.findFirst({ where: { payment_id: key, wallet_type: "user" }, select: { id: true } });
     if (!dup) {
-      const user = await tx.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { wallet: true } });
-      const balance = Math.max(0, round2(user?.wallet) || 0);
-      if (balance < amt) throw httpError(402, "Insufficient wallet balance for the extra labour");
-      await tx.tbl_user.update({ where: { id: Number(order.uid) }, data: { wallet: { decrement: amt } } });
+      // Atomic conditional debit — no overdraft under concurrent approves.
+      const debited = await tx.tbl_user.updateMany({
+        where: { id: Number(order.uid), wallet: { gte: amt } },
+        data: { wallet: { decrement: amt } },
+      });
+      if (debited.count !== 1) throw httpError(402, "Insufficient wallet balance for the extra labour");
       await tx.tbl_wallet_history.create({
         data: {
           user_id: Number(order.uid), amount: amt, type: "debit",
