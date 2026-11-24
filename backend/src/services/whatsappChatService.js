@@ -704,6 +704,18 @@ async function sendAdminMessage({
         throw tplErr;
       }
     }
+
+    // Capture header media URL so the Admin Live Chat UI displays the image/video in the bubble
+    if (!mediaUrl && components && components.length > 0) {
+      const headerParam = components.find((c) => c.type === "header")?.parameters?.[0];
+      if (headerParam?.image?.link) {
+        mediaUrl = headerParam.image.link;
+        mediaType = "image";
+      } else if (headerParam?.video?.link) {
+        mediaUrl = headerParam.video.link;
+        mediaType = "video";
+      }
+    }
   } else if (mediaUrl) {
     messageType = mediaType?.startsWith("video") ? "video" : "image";
     metaResponse = await cloudApi.sendMediaMessage(normalized, messageType, mediaUrl, text);
