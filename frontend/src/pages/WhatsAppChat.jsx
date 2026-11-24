@@ -728,7 +728,9 @@ export default function WhatsAppChat() {
                                 ) : msg.status === 'delivered' ? (
                                   <CheckCheck size={14} />
                                 ) : msg.status === 'failed' ? (
-                                  <AlertCircle size={13} className="text-red-300" />
+                                  <span title={msg.error_message ? `Delivery Failed: ${msg.error_message}` : 'Delivery failed via Meta Cloud API'}>
+                                    <AlertCircle size={13} className="text-red-300 hover:text-red-100 cursor-pointer" />
+                                  </span>
                                 ) : (
                                   <Check size={13} />
                                 )}

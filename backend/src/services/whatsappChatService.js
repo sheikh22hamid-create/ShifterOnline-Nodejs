@@ -620,7 +620,7 @@ async function sendAdminMessage({
           parameters: [
             {
               type: "image",
-              image: { link: "https://scontent.whatsapp.net/v/t61.29466-34/927313548_1135875032581293_2499839226674363177_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=yIrYL8pT534Q7kNvwEVtQh0&_nc_oc=AdoBMygOU4968PBH1BGMMLFAMkQoe-qGKRqX1MkZ0DQDPv-14fBxzhHNoAxLzn2ZUMKw9a1p_-u-XEWTFdo-Ow4N&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=Rpx5M2Yg9mnJLJsCu1tGmQ&_nc_tpa=Q5bMBQKlS_H_dLX8312P7hiC4mpwi17iD0aSsQXkNkR1W8YtlwY1gvqjC9YQbt39Gwca-KHoQWQinWVg9A&oh=01_Q5Aa6AHsV35MTEq2RLnCLYCaSYNitLuDOgg8k0WTbOGyqWw-0g&oe=6B2A9FD3" }
+              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795527682/whatsapp_templates/shifter_partner_invite_banner.jpg" }
             }
           ]
         },
@@ -641,7 +641,7 @@ async function sendAdminMessage({
           parameters: [
             {
               type: "image",
-              image: { link: "https://scontent.whatsapp.net/v/t61.29466-34/928194232_1871304367472714_4619012593659818928_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=y2vq_BYiKy8Q7kNvwFP9489&_nc_oc=Adojzho6QEBvFBcdt0fQET4hNcOx9a5nKE44AOOubtr0C5at0ZCQvwRiUdDXAfuU2Q_OPGJW48i4Pgk_TKJPDF73&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=Qg6uIbADQOvTCSIzdArNuw&_nc_tpa=Q5bMBQI_uQ2IX75GF1BHh9SSC7Gh2t5Jz2c09LiSxBhv1g4AWEv-4SkUyef_B6bFDgsdRfsUCegJdZd5CQ&oh=01_Q5Aa6AE_1z_WpIQBxau-7gcFr7-tnNNfSKAvqi3Jy0ev4wigqQ&oe=6B2CEC02" }
+              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795527682/whatsapp_templates/shifter_partner_invite_banner.jpg" }
             }
           ]
         },
@@ -659,7 +659,7 @@ async function sendAdminMessage({
           parameters: [
             {
               type: "image",
-              image: { link: "https://scontent.whatsapp.net/v/t61.29466-34/928836820_997021806288998_7432166074782495172_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=DjfL5me6YZAQ7kNvwGQRZ1f&_nc_oc=AdquuBMAtKzFTX_WhTGgVzGeOOfC9ck-hmKfJLp3HhhR9WoOqwaKWdlqb2-ee_nzAIEVH2E1hWatJA_5c9I5gp52&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=O-WM8q0_aRbDhap7lSy0eA&_nc_tpa=Q5bMBQJ-lH0PDmX0hkSGTcjcZe096wr2OZJdulcQkD2AGcdOvuYr2K2JToH9pwIa-j-WSj9HkslugggNjA&oh=01_Q5Aa6AGKwbv-2CQ5R-dJ3GR-KRB3FIMtu2m6XAWx4Fpwakb0Ow&oe=6B2CF22B" }
+              image: { link: "https://res.cloudinary.com/jludyhhm/image/upload/v1795527581/whatsapp_templates/shifter_driver_banner_v1.jpg" }
             }
           ]
         }
@@ -672,7 +672,7 @@ async function sendAdminMessage({
             {
               type: "video",
               video: {
-                link: "https://scontent.whatsapp.net/v/t61.29466-34/925636355_1179305167959627_7862560160966536095_n.mp4?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=fNCrCTDzIicQ7kNvwEYgrR4&_nc_oc=Adoecj7vVVVMQm3iJbIJdWbC-V01jsNMtzDBI-dcr-BxB7AaTY8E60kBXzhfj9BGUEkwl1hJL833b0lwH4inkBck&_nc_zt=28&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=v9Qe12b72qkVs2w7Rm0zow&_nc_tpa=Q5bMBQKijcujA1qrzAxu2tcE0jVCIWhOTQ4cZanuNDvxGSSHhTKMhf2hY7t0TJr54vfRFuPgphEkbOIiqw&oh=01_Q5Aa6AGxcMrasVS1RbJVxnObcI3kDExCXJnplOokdEBnU6pKjg&oe=6B2CCE58"
+                link: "https://res.cloudinary.com/jludyhhm/video/upload/v1795527598/whatsapp_templates/customer_promo_video_v1.mp4"
               }
             }
           ]
