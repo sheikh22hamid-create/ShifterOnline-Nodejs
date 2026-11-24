@@ -42,7 +42,7 @@ router.get("/test-drivers", riderController.listTestDrivers);
 router.get("/:riderId/delivery-types", riderController.getDeliveryTypes);
 router.post("/delivery-type", riderController.setDeliveryType);
 router.post("/body-type", riderController.setBodyType);
-router.post("/labour-mode", riderController.setLabourMode);
+router.post("/labour-mode", appKeyAuth, riderController.setLabourMode);
 router.post("/package-list", riderController.packageListForDriver);
 router.post("/scheduled-trips", driverScheduledTripsController.listScheduledTrips);
 router.post("/scheduled-trips/interest", driverScheduledTripsController.markInterest);
