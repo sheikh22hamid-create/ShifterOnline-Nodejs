@@ -849,10 +849,14 @@ async function createOrderCore({
       const lconfig = await labourSettings.getLabourConfig(orderCityId);
       const r = computeLabour({ mode: labour.mode, heavyItem: labour.heavyItem, legs: labour.legs }, lconfig);
       if (!r.disabled && !r.labourOverCap && r.labourCharge > 0) {
-        await labourEscrowService.holdLabour({
+        const hold = await labourEscrowService.holdLabour({
           orderId: order.id, mode: labour.mode, amount: r.labourCharge, declaredJson: labour,
         });
-        order.labour = { charge: r.labourCharge, status: "held" };
+        // Collected from the customer wallet. If the balance was short, the ride still stands — just
+        // without labour (status not_held); the client can surface a recharge prompt.
+        order.labour = hold.held
+          ? { charge: r.labourCharge, status: "held" }
+          : { charge: 0, status: "not_held", reason: hold.reason };
       }
     } catch (err) {
       logger.error(`createOrderCore: labour hold failed for order ${order.id}:`, err);

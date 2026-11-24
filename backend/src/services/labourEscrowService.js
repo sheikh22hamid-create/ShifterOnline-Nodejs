@@ -19,19 +19,58 @@ async function hasOpenDispute(orderId, client = prisma) {
   return !!d;
 }
 
-/** At order creation, when the customer opted for labour: stamp the declared snapshot and hold. */
-async function holdLabour({ orderId, mode, amount, declaredJson }, client = prisma) {
-  await client.pkg_order.update({
-    where: { id: Number(orderId) },
-    data: {
-      labour_opted: true,
-      labour_mode: mode || null,
-      labour_charge_amount: round2(amount),
-      labour_declared_json: declaredJson ? JSON.stringify(declaredJson) : null,
-      labour_status: "held",
-    },
-  });
-  return { held: true, amount: round2(amount) };
+/**
+ * At order creation, when the customer opted for labour: COLLECT the charge from the customer wallet
+ * and hold it in escrow, atomically. The money is really taken here — release later pays the driver
+ * from it, cancel refunds it — so there is no minting: labour_status='held' is set only in the same
+ * transaction as the debit, and is itself the proof the money was collected. Idempotent via the
+ * `labour_hold:<order>` ledger key. Fails (no hold) if the wallet balance is short.
+ */
+async function holdLabour({ orderId, mode, amount, declaredJson }) {
+  const amt = round2(amount);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const order = await tx.pkg_order.findUnique({
+        where: { id: Number(orderId) },
+        select: { uid: true, labour_status: true },
+      });
+      if (!order) return { held: false, reason: "order_not_found" };
+      if (order.labour_status === "held") return { held: true, amount: amt, already: true };
+
+      const key = `labour_hold:${orderId}`;
+      const dup = await tx.tbl_wallet_history.findFirst({ where: { payment_id: key, wallet_type: "user" }, select: { id: true } });
+      if (dup) return { held: true, amount: amt, already: true };
+
+      if (amt > 0) {
+        const user = await tx.tbl_user.findUnique({ where: { id: Number(order.uid) }, select: { wallet: true } });
+        const balance = Math.max(0, round2(user?.wallet) || 0);
+        if (balance < amt) return { held: false, reason: "insufficient_balance", balance, required: amt };
+        await tx.tbl_user.update({ where: { id: Number(order.uid) }, data: { wallet: { decrement: amt } } });
+        await tx.tbl_wallet_history.create({
+          data: {
+            user_id: Number(order.uid), amount: amt, type: "debit",
+            remark: `Labour charge held for order #${orderId}`, wallet_type: "user",
+            order_id: Number(orderId), payment_id: key, created_at: istNow(),
+          },
+        });
+      }
+
+      await tx.pkg_order.update({
+        where: { id: Number(orderId) },
+        data: {
+          labour_opted: true,
+          labour_mode: mode || null,
+          labour_charge_amount: amt,
+          labour_declared_json: declaredJson ? JSON.stringify(declaredJson) : null,
+          labour_status: "held",
+        },
+      });
+      return { held: true, amount: amt };
+    });
+  } catch (err) {
+    logger.error(`labourEscrow.hold order#${orderId}: ${err.message}`);
+    return { held: false, reason: "error" };
+  }
 }
 
 /** At completion / drop-OTP: release 100% to the driver, unless a dispute has frozen the escrow. */
