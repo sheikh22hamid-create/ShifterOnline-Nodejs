@@ -1,4 +1,4 @@
-const { computeLabour } = require("../labourPricing");
+const { computeLabour, labourResponse } = require("../labourPricing");
 
 // Fixed config mirrors the migration defaults so the pricing math is tested without a DB.
 const config = {
@@ -124,5 +124,27 @@ describe("computeLabour", () => {
     );
     expect(r.disabled).toBe(true);
     expect(r.labourCharge).toBe(0);
+  });
+});
+
+describe("labourResponse (estimate shape)", () => {
+  const input = { mode: "home", legs: [{ role: "pickup", size: "small", floor: "ground", lift: false }] };
+
+  test("enabled -> { charge, perLeg, overCap }", () => {
+    const r = labourResponse(input, config);
+    expect(r).toEqual({ charge: 60, perLeg: [{ role: "pickup", charge: 60 }], overCap: false });
+  });
+
+  test("over-cap -> charge 0, overCap true", () => {
+    const r = labourResponse(
+      { mode: "home", legs: [{ role: "drop", size: "large", floor: "ground", lift: false }] },
+      config
+    );
+    expect(r.overCap).toBe(true);
+    expect(r.charge).toBe(0);
+  });
+
+  test("feature disabled -> null (omitted from estimate)", () => {
+    expect(labourResponse(input, { ...config, enabled: false })).toBeNull();
   });
 });

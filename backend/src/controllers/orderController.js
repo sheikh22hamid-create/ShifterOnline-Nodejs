@@ -4,6 +4,8 @@ const multer = require("multer");
 const prisma = require("../config/db");
 const { uploadBuffer } = require("../utils/cloudinaryStorage");
 const pricingEngine = require("../services/pricingEngine");
+const labourSettings = require("../services/labourSettings");
+const { labourResponse } = require("../services/labourPricing");
 const tripLifecycle = require("../services/tripLifecycle");
 const orderFareHistory = require("../services/orderFareHistory");
 const dispatchManager = require("../services/dispatchManager");
@@ -174,6 +176,15 @@ async function fareEstimate(req, res) {
       body_type: body_type || "any",
       cityId: city_id || null,
     });
+
+    // Loading/Unloading labour (spec 2026-11-24): opt-in, own line, never folded into the transport
+    // fare. Omitted unless the client asks and the feature is enabled for the city.
+    const labourInput = req.body.labour;
+    if (labourInput && Array.isArray(labourInput.legs) && labourInput.legs.length) {
+      const config = await labourSettings.getLabourConfig(req.body.city_id);
+      estimate.labour = labourResponse(labourInput, config);
+    }
+
     return res.status(200).json(estimate);
   } catch (err) {
     logger.error("fareEstimate failed:", err);

@@ -62,4 +62,14 @@ function computeLabour(input, config) {
   return { labourCharge, perLeg, labourOverCap: false };
 }
 
-module.exports = { computeLabour };
+/**
+ * Shape the labour result for the fare-estimate response. Returns null when the feature is off
+ * (so the estimate simply omits labour), else { charge, perLeg, overCap }.
+ */
+function labourResponse(input, config) {
+  const r = computeLabour(input, config);
+  if (r.disabled) return null;
+  return { charge: r.labourCharge, perLeg: r.perLeg, overCap: r.labourOverCap };
+}
+
+module.exports = { computeLabour, labourResponse };
