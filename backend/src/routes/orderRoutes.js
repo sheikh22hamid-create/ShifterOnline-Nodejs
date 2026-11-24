@@ -18,6 +18,10 @@ router.post("/fare-estimate", orderController.fareEstimate);
 router.post("/distance", orderController.distanceEstimate);
 router.post("/packagelist", orderController.packageListEstimate);
 router.post("/create", orderController.createOrder);
+// Loading/Unloading labour (spec 2026-11-24): driver proposes an on-site extra, customer approves it.
+const labourController = require("../controllers/labourController");
+router.post("/labour/extra", labourController.proposeExtra);
+router.post("/labour/extra/approve", labourController.approveExtra);
 router.post("/gst/verify", gstController.verify);
 router.post("/gst/profile", gstController.profile);
 router.post("/gst/remove", gstController.remove);

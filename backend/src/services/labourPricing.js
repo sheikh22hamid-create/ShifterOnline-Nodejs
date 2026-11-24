@@ -63,6 +63,16 @@ function computeLabour(input, config) {
 }
 
 /**
+ * Raw labour charge ignoring caps and the enabled flag — used to price an on-site correction where
+ * the driver is already present (the reality must get a number even if it exceeds the booking cap).
+ */
+function computeLabourRaw(input, config) {
+  const mode = input.mode === "shop" ? "shop" : "home";
+  const legs = Array.isArray(input.legs) ? input.legs : [];
+  return legs.reduce((sum, leg) => sum + legCharge(leg, mode, config), 0);
+}
+
+/**
  * Shape the labour result for the fare-estimate response. Returns null when the feature is off
  * (so the estimate simply omits labour), else { charge, perLeg, overCap }.
  */
@@ -72,4 +82,4 @@ function labourResponse(input, config) {
   return { charge: r.labourCharge, perLeg: r.perLeg, overCap: r.labourOverCap };
 }
 
-module.exports = { computeLabour, labourResponse };
+module.exports = { computeLabour, computeLabourRaw, labourResponse };
