@@ -631,6 +631,20 @@ async function sendAdminMessage({
           ]
         }
       ];
+    } else if (metaTemplateName === "customer_promo_benefits" && (!components || components.length === 0)) {
+      components = [
+        {
+          type: "header",
+          parameters: [
+            {
+              type: "video",
+              video: {
+                link: "https://scontent.whatsapp.net/v/t61.29466-34/925636355_1179305167959627_7862560160966536095_n.mp4?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=fNCrCTDzIicQ7kNvwEYgrR4&_nc_oc=Adoecj7vVVVMQm3iJbIJdWbC-V01jsNMtzDBI-dcr-BxB7AaTY8E60kBXzhfj9BGUEkwl1hJL833b0lwH4inkBck&_nc_zt=28&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=v9Qe12b72qkVs2w7Rm0zow&_nc_tpa=Q5bMBQKijcujA1qrzAxu2tcE0jVCIWhOTQ4cZanuNDvxGSSHhTKMhf2hY7t0TJr54vfRFuPgphEkbOIiqw&oh=01_Q5Aa6AGxcMrasVS1RbJVxnObcI3kDExCXJnplOokdEBnU6pKjg&oe=6B2CCE58"
+              }
+            }
+          ]
+        }
+      ];
     }
 
     try {

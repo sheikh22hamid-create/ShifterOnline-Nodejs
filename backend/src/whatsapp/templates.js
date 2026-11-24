@@ -9,6 +9,18 @@ const HELPLINE_NUMBER = "+91 9109114515";
 
 const WHATSAPP_TEMPLATES = [
   {
+    id: "customer_promo_benefits",
+    name: "customer_promo_benefits",
+    metaTemplateName: "customer_promo_benefits",
+    isMetaApproved: true,
+    title: "🎥 Customer Promo & 5 Benefits (Video + Buttons)",
+    category: "customer",
+    categoryLabel: "Marketing & Offers",
+    description: "Official Meta template with promotional video header, 5 core customer benefits, and Download App + Chat buttons.",
+    message:
+      "🚚 *SHIFTER ONLINE – Kam Kiraya, Bharosemand Service & Extra Savings!*\n\nCommercial & household customers ke liye market se saste rates par tempo/mini truck booking + 5 Zabardast Benefits! 🎉\n\n🌟 *5 SPECIAL BENEFITS:*\n💸 *1. Market Se Kam Rates* — Har booking par guaranteed bachat\n🎁 *2. Free Booking Chance* — Free Driver milne par 100% fare wallet me refund\n🛡️ *3. Booking Guarantee* — Driver na milne par compensation guarantee\n🚛 *4. Cancellation Compensation* — Driver cancel kare to instant compensation\n💰 *5. Receiver Commission* — Apne customer ki booking par commission kamane ka moka\n\n👇 Neeche *Download App* button par click karein aur abhi booking shuru karein!\n\nKisi bhi sahayata ke liye *Chat With Us* button dabayein — hamari team turant reply karegi.\n\n— *Team Shifter Online*",
+  },
+  {
     id: "shifter_driver_unavailable",
     name: "shifter_driver_unavailable",
     metaTemplateName: "shifter_driver_unavailable",
