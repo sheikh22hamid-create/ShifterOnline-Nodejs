@@ -3,6 +3,7 @@
 
 const logger = require("../utils/logger");
 const labourExtraService = require("../services/labourExtraService");
+const labourDisputeService = require("../services/labourDisputeService");
 
 function fail(res, err, where) {
   const code = err.statusCode || 500;
@@ -34,4 +35,41 @@ async function approveExtra(req, res) {
   }
 }
 
-module.exports = { proposeExtra, approveExtra };
+// Customer or driver raises a labour dispute: { order_id, raised_by, raiser_id, reason }
+async function raiseDispute(req, res) {
+  try {
+    const { order_id, raised_by, raiser_id, reason } = req.body;
+    if (!order_id) return res.status(400).json({ Result: false, msg: "order_id is required" });
+    const r = await labourDisputeService.raiseDispute({ orderId: order_id, raisedBy: raised_by, raiserId: raiser_id, reason });
+    return res.status(200).json({ Result: true, ...r });
+  } catch (err) {
+    return fail(res, err, "labour.raiseDispute");
+  }
+}
+
+// Executive queue (admin, req.user). Executives see their own city; admin/superadmin may pass city_id.
+async function listDisputes(req, res) {
+  try {
+    const role = req.user?.role;
+    const cityId = role === "executive" ? req.user?.city_id : (req.query?.city_id ?? null);
+    const rows = await labourDisputeService.listForExecutive({ cityId });
+    return res.status(200).json({ Result: true, disputes: rows });
+  } catch (err) {
+    return fail(res, err, "labour.listDisputes");
+  }
+}
+
+// Executive resolves: POST :id/resolve { action: release|refund|split, driver_amount?, note }
+async function resolveDispute(req, res) {
+  try {
+    const { action, driver_amount, note } = req.body;
+    const r = await labourDisputeService.resolveDispute({
+      disputeId: req.params.id, executiveId: req.user?.id, action, driverAmount: driver_amount, note,
+    });
+    return res.status(200).json({ Result: true, ...r });
+  } catch (err) {
+    return fail(res, err, "labour.resolveDispute");
+  }
+}
+
+module.exports = { proposeExtra, approveExtra, raiseDispute, listDisputes, resolveDispute };

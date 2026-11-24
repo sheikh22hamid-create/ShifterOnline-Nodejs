@@ -32,6 +32,8 @@ const EXECUTIVE_WRITES = [
   "POST /orders/:id/outside-driver-lookup", "POST /orders/:id/outside-driver/register",
   // WhatsApp Trial Order (spec 2026-11-17, section 5): the executive pushes a stuck WhatsApp driver's next step.
   "POST /orders/:id/whatsapp-step",
+  // Loading/Unloading labour (spec 2026-11-24): the executive resolves a labour dispute (release/refund/split).
+  "POST /labour/disputes/:id/resolve",
 ];
 
 function parseRoutes() {

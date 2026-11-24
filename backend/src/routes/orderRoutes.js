@@ -22,6 +22,7 @@ router.post("/create", orderController.createOrder);
 const labourController = require("../controllers/labourController");
 router.post("/labour/extra", labourController.proposeExtra);
 router.post("/labour/extra/approve", labourController.approveExtra);
+router.post("/labour/dispute", labourController.raiseDispute);
 router.post("/gst/verify", gstController.verify);
 router.post("/gst/profile", gstController.profile);
 router.post("/gst/remove", gstController.remove);

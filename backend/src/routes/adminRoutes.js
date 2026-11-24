@@ -178,6 +178,11 @@ router.post("/booking-guarantee/exec/cases/:orderId/candidate/reject", auth, aut
 router.post("/booking-guarantee/exec/cases/:orderId/candidate/refresh-distance", auth, authorize("executive"), guaranteeQueueController.refreshDistance);
 router.post("/booking-guarantee/exec/cases/:orderId/reassign", auth, authorize("superadmin", "admin"), guaranteeQueueController.reassign);
 router.get("/booking-guarantee/exec/queue", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.queue);
+
+// Loading/Unloading labour dispute queue (spec 2026-11-24). Executive resolves release/refund/split.
+const labourController = require("../controllers/labourController");
+router.get("/labour/disputes", auth, authorize(...RIDER_ROLES), labourController.listDisputes);
+router.post("/labour/disputes/:id/resolve", auth, authorize(...RIDER_ROLES), labourController.resolveDispute);
 router.get("/booking-guarantee/exec/workload", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.workload);
 router.get("/booking-guarantee/exec/report", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.report);
 router.put("/booking-guarantee/exec/profiles/:adminId", auth, authorize("superadmin", "admin"), guaranteeQueueController.saveProfile);
