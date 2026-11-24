@@ -652,6 +652,18 @@ async function sendAdminMessage({
           ]
         }
       ];
+    } else if (metaTemplateName === "shifter_driver_incomplete_reg" && (!components || components.length === 0)) {
+      components = [
+        {
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: { link: "https://scontent.whatsapp.net/v/t61.29466-34/928836820_997021806288998_7432166074782495172_n.jpg?ccb=1-7&_nc_sid=8b1bef&_nc_ohc=DjfL5me6YZAQ7kNvwGQRZ1f&_nc_oc=AdquuBMAtKzFTX_WhTGgVzGeOOfC9ck-hmKfJLp3HhhR9WoOqwaKWdlqb2-ee_nzAIEVH2E1hWatJA_5c9I5gp52&_nc_zt=3&_nc_ht=scontent.whatsapp.net&edm=AIJs65cEAAAA&_nc_gid=O-WM8q0_aRbDhap7lSy0eA&_nc_tpa=Q5bMBQJ-lH0PDmX0hkSGTcjcZe096wr2OZJdulcQkD2AGcdOvuYr2K2JToH9pwIa-j-WSj9HkslugggNjA&oh=01_Q5Aa6AGKwbv-2CQ5R-dJ3GR-KRB3FIMtu2m6XAWx4Fpwakb0Ow&oe=6B2CF22B" }
+            }
+          ]
+        }
+      ];
     } else if (metaTemplateName === "customer_promo_benefits" && (!components || components.length === 0)) {
       components = [
         {

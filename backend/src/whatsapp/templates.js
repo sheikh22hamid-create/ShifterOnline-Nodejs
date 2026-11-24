@@ -61,10 +61,10 @@ const WHATSAPP_TEMPLATES = [
     name: "shifter_driver_incomplete_reg",
     metaTemplateName: "shifter_driver_incomplete_reg",
     isMetaApproved: true,
-    title: "⚠️ Driver Incomplete Registration (Action & Buttons)",
+    title: "⚠️ Driver Incomplete Registration (Image Banner & Buttons)",
     category: "driver",
     categoryLabel: "Driver Reminder",
-    description: "Nudge drivers with incomplete registration to complete RC/DL verification with direct buttons.",
+    description: "Nudge drivers with incomplete registration using high-converting Tata Ace image banner and direct action buttons.",
     message:
       "Aapka *Shifter Online Driver* registration adhoora hai. Bas 2 minute me apni details aur RC/DL submit karke account activate karein aur daily orders lena shuru karein! 🚚💨\n\n📲 *Driver App* khol kar registration poora karein:\n👉 https://play.google.com/store/apps/details?id=com.shifter.driver\n\nKoi pareshani aaye to call karein: +91 9109114515\n— *Team Shifter Online*",
   },
