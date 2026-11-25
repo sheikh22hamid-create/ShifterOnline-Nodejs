@@ -115,7 +115,7 @@ function App() {
             <Route path="/guarantee/my-cases" element={<Gated roles={['executive']}><ExecutiveWorkspace /></Gated>} />
             <Route path="/guarantee/workload" element={<Gated roles={['superadmin', 'admin']}><GuaranteeWorkload /></Gated>} />
             <Route path="/labour/disputes" element={<Gated roles={['superadmin', 'admin', 'executive']}><LabourDisputes /></Gated>} />
-            <Route path="/labour-settings" element={<Gated roles={['superadmin', 'admin']}><LabourSettings /></Gated>} />
+            <Route path="/labour-settings" element={<Gated roles={['superadmin']}><LabourSettings /></Gated>} />
             <Route path="/order-search" element={<OrderSearchSettings />} />
             <Route path="/tiered-dispatch" element={<TieredDispatch />} />
             <Route path="/driver-performance" element={<DriverPerformance />} />

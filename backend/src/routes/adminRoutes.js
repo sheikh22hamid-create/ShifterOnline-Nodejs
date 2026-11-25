@@ -183,9 +183,11 @@ router.get("/booking-guarantee/exec/queue", auth, authorize("superadmin", "admin
 const labourController = require("../controllers/labourController");
 router.get("/labour/disputes", auth, authorize(...RIDER_ROLES), labourController.listDisputes);
 router.post("/labour/disputes/:id/resolve", auth, authorize(...RIDER_ROLES), labourController.resolveDispute);
-// Owner enable/disable toggle (per-city). Global config -> superadmin/admin only (not executive).
-router.get("/labour/settings", auth, authorize("superadmin", "admin"), labourController.getSettings);
-router.put("/labour/settings", auth, authorize("superadmin", "admin"), labourController.saveSettings);
+// Owner enable/disable toggle (per-city). This is a global product flag (pricing + liability), so
+// it is superadmin-only — matching /tier-dispatch/settings and /booking-guarantee/settings — a
+// city-scoped admin must not be able to flip the global switch or another city's state.
+router.get("/labour/settings", auth, authorize("superadmin"), labourController.getSettings);
+router.put("/labour/settings", auth, authorize("superadmin"), labourController.saveSettings);
 router.get("/booking-guarantee/exec/workload", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.workload);
 router.get("/booking-guarantee/exec/report", auth, authorize("superadmin", "admin"), scopeFilter, guaranteeQueueController.report);
 router.put("/booking-guarantee/exec/profiles/:adminId", auth, authorize("superadmin", "admin"), guaranteeQueueController.saveProfile);
