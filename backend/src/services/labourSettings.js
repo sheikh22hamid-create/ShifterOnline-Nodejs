@@ -76,6 +76,26 @@ function buildConfig(map, cityId) {
   };
 }
 
+const truthy = (v) => v === true || v === "true" || v === 1 || v === "1";
+
+/**
+ * Pure: sanitize the admin toggle payload into the { global, cities } shape stored as
+ * labour_enabled. Keeps only cities turned ON, keyed by a positive-integer id string, so a
+ * malformed or hostile payload can never store garbage that buildConfig would misread.
+ */
+function normalizeLabourEnabled(input) {
+  const out = { global: false, cities: {} };
+  if (!input || typeof input !== "object") return out;
+  out.global = truthy(input.global);
+  const cities = input.cities && typeof input.cities === "object" ? input.cities : {};
+  for (const [key, val] of Object.entries(cities)) {
+    const id = Number(key);
+    if (!Number.isInteger(id) || id <= 0) continue;
+    if (truthy(val)) out.cities[String(id)] = true;
+  }
+  return out;
+}
+
 /**
  * Read the labour_* settings and resolve the config for a city. Never throws.
  */
@@ -91,4 +111,4 @@ async function getLabourConfig(cityId) {
   }
 }
 
-module.exports = { buildConfig, getLabourConfig, DEFAULTS, KEYS };
+module.exports = { buildConfig, getLabourConfig, normalizeLabourEnabled, DEFAULTS, KEYS };

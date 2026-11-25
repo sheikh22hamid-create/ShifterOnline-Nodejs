@@ -2,8 +2,12 @@
 // Ids come in the body, matching the existing order/trip endpoints' convention.
 
 const logger = require("../utils/logger");
+const prisma = require("../config/db");
 const labourExtraService = require("../services/labourExtraService");
 const labourDisputeService = require("../services/labourDisputeService");
+const { normalizeLabourEnabled } = require("../services/labourSettings");
+
+const ENABLED_KEY = "labour_enabled";
 
 function fail(res, err, where) {
   const code = err.statusCode || 500;
@@ -84,4 +88,49 @@ async function resolveDispute(req, res) {
   }
 }
 
-module.exports = { proposeExtra, approveExtra, raiseDispute, listDisputes, resolveDispute };
+// GET /labour/settings (admin) — current enable state (global + per-city) + the city list to toggle.
+async function getSettings(req, res) {
+  try {
+    const [row, cities] = await Promise.all([
+      prisma.app_settings.findFirst({ where: { setting_key: ENABLED_KEY } }),
+      prisma.tbl_city.findMany({ where: { status: 1 }, select: { id: true, title: true }, orderBy: { title: "asc" } }),
+    ]);
+    let parsed = {};
+    try {
+      parsed = row && row.setting_value ? JSON.parse(row.setting_value) : {};
+    } catch {
+      parsed = {};
+    }
+    return res.status(200).json({ Result: true, enabled: normalizeLabourEnabled(parsed), cities });
+  } catch (err) {
+    return fail(res, err, "labour.getSettings");
+  }
+}
+
+// PUT /labour/settings (admin) — body { global?: bool, cities?: { <cityId>: bool } }. Stored sanitized.
+async function saveSettings(req, res) {
+  try {
+    const enabled = normalizeLabourEnabled(req.body);
+    const value = JSON.stringify(enabled);
+    try {
+      await prisma.app_settings.upsert({
+        where: { setting_key: ENABLED_KEY },
+        create: { setting_key: ENABLED_KEY, setting_value: value, updated_at: new Date() },
+        update: { setting_value: value, updated_at: new Date() },
+      });
+    } catch (upsertErr) {
+      // Fallback if the unique constraint on setting_key is missing (mirrors settingsController).
+      const existing = await prisma.app_settings.findFirst({ where: { setting_key: ENABLED_KEY } });
+      if (existing) {
+        await prisma.app_settings.update({ where: { id: existing.id }, data: { setting_value: value, updated_at: new Date() } });
+      } else {
+        await prisma.app_settings.create({ data: { setting_key: ENABLED_KEY, setting_value: value, updated_at: new Date() } });
+      }
+    }
+    return res.status(200).json({ Result: true, enabled });
+  } catch (err) {
+    return fail(res, err, "labour.saveSettings");
+  }
+}
+
+module.exports = { proposeExtra, approveExtra, raiseDispute, listDisputes, resolveDispute, getSettings, saveSettings };
