@@ -53,6 +53,7 @@ const EXECUTIVE_MODULES = [
   "/cms/goods-types",
   "/cms/restricted-items",
   "/cms/booking-guidelines",
+  "/labour/disputes",
 ];
 
 const ANY = "*"; // any enabled module is enough (shared lookup data every page needs)
@@ -103,6 +104,7 @@ const API_RULES = [
   ["/order-search", ["/order-search"]],
   ["/tier-dispatch", ["/tiered-dispatch", "/driver-performance"]],
   ["/driver-performance", ["/driver-performance"]],
+  ["/labour/disputes", ["/labour/disputes"]],
 
   ["/driver-leads", ["/driver-leads"]],
   ["/registration-leads", ["/registration-leads"]],
