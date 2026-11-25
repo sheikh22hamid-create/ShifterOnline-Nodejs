@@ -26,9 +26,13 @@ async function proposeExtra(req, res) {
 // Customer approves the pending extra: { order_id, uid }
 async function approveExtra(req, res) {
   try {
-    const { order_id, uid } = req.body;
+    const { order_id, uid, expected_amount } = req.body;
     if (!order_id) return res.status(400).json({ Result: false, msg: "order_id is required" });
-    const r = await labourExtraService.approveExtra({ orderId: order_id, uid });
+    const r = await labourExtraService.approveExtra({
+      orderId: order_id,
+      uid,
+      expectedAmount: expected_amount == null ? null : Number(expected_amount),
+    });
     return res.status(200).json({ Result: true, ...r });
   } catch (err) {
     return fail(res, err, "labour.approveExtra");

@@ -1,4 +1,4 @@
-const { extraDelta, canAddExtra, canApproveExtra } = require("../labourExtra");
+const { extraDelta, canAddExtra, canApproveExtra, extraAmountMatches } = require("../labourExtra");
 
 const config = {
   enabled: true,
@@ -63,5 +63,20 @@ describe("canApproveExtra", () => {
   });
   test("not held -> false", () => {
     expect(canApproveExtra({ labourStatus: "released", extraApproved: false, extraAmount: 54 })).toBe(false);
+  });
+});
+
+describe("extraAmountMatches", () => {
+  test("not enforced when the customer omits the expected amount (backward compatible)", () => {
+    expect(extraAmountMatches(120, null)).toBe(true);
+    expect(extraAmountMatches(120, undefined)).toBe(true);
+  });
+  test("matches when the pending amount equals what the customer saw", () => {
+    expect(extraAmountMatches(120, 120)).toBe(true);
+    expect(extraAmountMatches(120.004, 120)).toBe(true); // rounding tolerance
+  });
+  test("rejects when the driver changed the amount after the customer saw it", () => {
+    expect(extraAmountMatches(200, 120)).toBe(false);
+    expect(extraAmountMatches(120, 200)).toBe(false);
   });
 });

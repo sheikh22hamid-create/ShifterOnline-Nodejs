@@ -7,7 +7,7 @@ const prisma = require("../config/db");
 const logger = require("../utils/logger");
 const { istNow } = require("../utils/istTime");
 const labourSettings = require("./labourSettings");
-const { extraDelta, canAddExtra, canApproveExtra } = require("./labourExtra");
+const { extraDelta, canAddExtra, canApproveExtra, extraAmountMatches } = require("./labourExtra");
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const httpError = (statusCode, message) => Object.assign(new Error(message), { statusCode });
@@ -48,7 +48,7 @@ async function proposeExtra({ orderId, riderId, mode, heavyItem, legs, photo }) 
 }
 
 /** Customer approves the pending extra: collect it from the wallet and mark approved, atomically. */
-async function approveExtra({ orderId, uid }) {
+async function approveExtra({ orderId, uid, expectedAmount = null }) {
   return prisma.$transaction(async (tx) => {
     const order = await tx.pkg_order.findUnique({
       where: { id: Number(orderId) },
@@ -61,6 +61,12 @@ async function approveExtra({ orderId, uid }) {
       labourStatus: order.labour_status, extraApproved: order.labour_extra_approved, extraAmount: order.labour_extra_amount,
     })) {
       throw httpError(409, "No pending extra to approve");
+    }
+    // If the customer told us which amount they were approving, only go through while the pending
+    // proposal still equals it — a driver can re-propose a bigger amount before approval, and the
+    // customer must never be charged for a figure they did not see.
+    if (!extraAmountMatches(order.labour_extra_amount, expectedAmount)) {
+      throw httpError(409, "The extra amount changed — please review the updated amount again");
     }
 
     const amt = round2(order.labour_extra_amount);
@@ -82,12 +88,15 @@ async function approveExtra({ orderId, uid }) {
       });
     }
 
-    // Claim the approval atomically with the collection (idempotent against a repeat approve).
+    // Claim the approval atomically with the collection (idempotent against a repeat approve), bound
+    // to the exact amount we just debited: if the driver re-proposed a different figure between our
+    // snapshot read and this write, the claim matches 0 rows and the whole transaction (debit too)
+    // rolls back — we never collect one amount and approve another.
     const claimed = await tx.pkg_order.updateMany({
-      where: { id: Number(orderId), labour_extra_approved: false, labour_status: "held" },
+      where: { id: Number(orderId), labour_extra_approved: false, labour_status: "held", labour_extra_amount: amt },
       data: { labour_extra_approved: true },
     });
-    if (claimed.count !== 1) throw httpError(409, "Extra already decided");
+    if (claimed.count !== 1) throw httpError(409, "The extra amount changed — please review the updated amount again");
     return { approved: true, extra: amt };
   });
 }

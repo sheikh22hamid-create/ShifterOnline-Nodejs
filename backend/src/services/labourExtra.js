@@ -24,4 +24,14 @@ function canApproveExtra({ labourStatus, extraApproved, extraAmount }) {
   return labourStatus === "held" && !extraApproved && round2(extraAmount) > 0;
 }
 
-module.exports = { extraDelta, canAddExtra, canApproveExtra };
+/**
+ * Guards the approve against a changed proposal: the customer may send the exact amount they were
+ * shown; approval then only goes through while the pending amount still equals it. Omitting the
+ * expected amount keeps the old behaviour (approve whatever is pending) so existing callers never break.
+ */
+function extraAmountMatches(extraAmount, expectedAmount) {
+  if (expectedAmount === null || expectedAmount === undefined) return true;
+  return round2(extraAmount) === round2(expectedAmount);
+}
+
+module.exports = { extraDelta, canAddExtra, canApproveExtra, extraAmountMatches };
