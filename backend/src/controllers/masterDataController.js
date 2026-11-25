@@ -154,7 +154,22 @@ async function deleteVehicle(req, res) {
 
 async function listCategories(req, res) {
   try {
-    const rows = await prisma.pkg_category.findMany({ orderBy: [{ sort_order: "asc" }, { id: "asc" }] });
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? parseInt(req.user.city_id, 10) : null;
+
+    let where = {};
+    if (!isSuperAdmin) {
+      const target = userCityId || 0;
+      where = {
+        OR: [{ city_id: target }, { city_id: 0 }, { city_id: 17 }, { city_id: null }],
+      };
+    } else if (req.query.city_id && req.query.city_id !== "all") {
+      const qCity = parseInt(req.query.city_id, 10);
+      where = {
+        OR: [{ city_id: qCity }, { city_id: 0 }, { city_id: 17 }, { city_id: null }],
+      };
+    }
+    const rows = await prisma.pkg_category.findMany({ where, orderBy: [{ sort_order: "asc" }, { id: "asc" }] });
     return res.status(200).json({ success: true, total: rows.length, data: rows });
   } catch (err) {
     return internalError(res, err, "listCategories");
@@ -163,6 +178,9 @@ async function listCategories(req, res) {
 
 async function createCategory(req, res) {
   try {
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? parseInt(req.user.city_id, 10) : null;
+
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
       max_load_kg, max_distance, dim_length, dim_width, dim_height, dim_unit, detail_image,
@@ -191,13 +209,18 @@ async function createCategory(req, res) {
       resolvedDriverBodyTypes = resolvedAllowedBodyTypes;
     }
 
+    let targetCity = city_id ? parseInt(city_id, 10) : 0;
+    if (!isSuperAdmin) {
+      targetCity = userCityId || 0;
+    }
+
     const created = await prisma.pkg_category.create({
       data: {
         cat_name,
         cat_img,
         other_image: other_image ?? null,
         cat_status: cat_status === undefined ? 1 : Number(cat_status),
-        city_id: city_id ? parseInt(city_id, 10) : null,
+        city_id: targetCity,
         sort_order: sort_order !== undefined ? parseInt(sort_order, 10) : 0,
         max_load_kg: (max_load_kg === undefined || max_load_kg === null || max_load_kg === "") ? null : Number(max_load_kg),
         max_distance: (max_distance === undefined || max_distance === null || max_distance === "") ? null : Math.max(0, Number(max_distance) || 0),
@@ -224,6 +247,16 @@ async function updateCategory(req, res) {
     const existing = await prisma.pkg_category.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? parseInt(req.user.city_id, 10) : null;
+
+    if (!isSuperAdmin && existing.city_id !== userCityId) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You cannot modify categories of another city or Global Baseline.",
+      });
     }
     const {
       cat_name, cat_img, cat_status, city_id, sort_order, other_image,
@@ -273,6 +306,16 @@ async function deleteCategory(req, res) {
     const existing = await prisma.pkg_category.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: "Category not found" });
+    }
+
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? parseInt(req.user.city_id, 10) : null;
+
+    if (!isSuperAdmin && existing.city_id !== userCityId) {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You cannot delete categories of another city or Global Baseline.",
+      });
     }
 
     const packageCount = await prisma.tbl_package.count({ where: { cat_id: id } });

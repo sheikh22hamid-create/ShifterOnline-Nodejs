@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import api from '../../services/api'
+import { useAuth } from '../../context/AuthContext'
 import useApiQuery from '../../hooks/useApiQuery'
 import Modal from '../common/Modal'
 import { cityIdsLabel, parseCityIds, toggleCityId } from '../../utils/cityIds'
@@ -68,7 +69,11 @@ function Input(props) {
 }
 
 export default function RateCardFormModal({ open, rateCard, onClose, onSaved }) {
-  const isEdit = Boolean(rateCard)
+  const { user, hasRole } = useAuth()
+  const isSuperAdmin = hasRole('superadmin')
+  const isCityAdmin = !isSuperAdmin && hasRole('admin')
+
+  const isEdit = Boolean(rateCard && (!rateCard.is_inherited || isSuperAdmin))
   const categoriesFetcher = useCallback(() => api.get('/categories').then((res) => res.data?.data || res.data || []), [])
   const { data: rawCategories } = useApiQuery(categoriesFetcher)
   const categories = Array.isArray(rawCategories) ? rawCategories : (Array.isArray(rawCategories?.data) ? rawCategories.data : [])
@@ -312,7 +317,7 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
             ...rateCard,
             type: rateCard.type,
             cat_id: rateCard.cat_id,
-            city_id: rateCard.city_id,
+            city_id: isCityAdmin ? String(user?.city_id) : rateCard.city_id,
             min_charge: rateCard.min_charge,
             per_km_charge: rateCard.per_km_charge,
             pickup_per_km_charge: rateCard.pickup_per_km_charge ?? '',
@@ -422,7 +427,12 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
     setSubmitting(true)
     setError('')
     try {
-      const payload = { ...form, no_driver_compensation: form.no_driver_compensation === '' ? '0' : form.no_driver_compensation }
+      const cityIdToSave = isCityAdmin ? String(user?.city_id) : (form.city_id || '17')
+      const payload = {
+        ...form,
+        city_id: cityIdToSave,
+        no_driver_compensation: form.no_driver_compensation === '' ? '0' : form.no_driver_compensation,
+      }
       if (isEdit) {
         await api.put(`/rate-cards/${rateCard.id}`, payload)
       } else {
@@ -437,12 +447,17 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
   }
 
   const vehicleLabel = rateCard?.vehicle_type || rateCard?.category_name
+  const modalTitle = isCityAdmin && rateCard?.is_inherited
+    ? `⚡ Customize City Override: ${vehicleLabel ? `${vehicleLabel} - ` : ''}${rateCard.title}`
+    : isEdit
+    ? `Edit ${vehicleLabel ? `${vehicleLabel} - ` : ''}${rateCard.title}`
+    : 'New rate card'
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? `Edit ${vehicleLabel ? `${vehicleLabel} - ` : ''}${rateCard.title}` : 'New rate card'}
+      title={modalTitle}
       width={520}
       footer={
         <>
@@ -666,55 +681,68 @@ function computeSlabRateValues(vConfig, modelTitle = 'Model 1', slabConfig) {
         </div>
 
         <div>
-          <Label>Cities</Label>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Cities this rate card applies to">
-            {(() => {
-              // Only an explicit "0" lights "All cities"; an empty value on a new card means nothing picked yet.
-              const all = String(form.city_id ?? '').trim() === '0'
-              const picked = parseCityIds(form.city_id)
-              const known = new Set(cities.map((c) => String(c.id)))
-              const unknown = all ? [] : picked.filter((id) => id !== '0' && !known.has(id))
-              const chip = (key, label, active, onClick, title) => (
-                <button
-                  key={key}
-                  type="button"
-                  title={title}
-                  aria-pressed={active}
-                  onClick={onClick}
-                  className="rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors"
-                  style={
-                    active
-                      ? { borderColor: 'var(--brand)', background: 'rgba(234, 88, 12, 0.10)', color: 'var(--brand)' }
-                      : { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }
-                  }
-                >
-                  {label}
-                </button>
-              )
-              return [
-                chip('all', 'All cities', all, () => set('city_id', '0'), 'Use this rate card in every city'),
-                ...cities.map((c) =>
-                  chip(
-                    c.id,
-                    Number(c.status) === 0 ? `${c.title} (inactive)` : c.title,
-                    !all && picked.includes(String(c.id)),
-                    () => set('city_id', toggleCityId(form.city_id, c.id)),
-                    `City ID ${c.id}`,
-                  ),
-                ),
-                ...unknown.map((id) =>
-                  chip(`u${id}`, `City #${id}`, true, () => set('city_id', toggleCityId(form.city_id, id)), 'This city no longer exists — click to remove'),
-                ),
-              ]
-            })()}
-          </div>
-          <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
-            {cities.length === 0
-              ? 'Loading cities…'
-              : parseCityIds(form.city_id).length === 0
-                ? 'Pick at least one city, or All cities.'
-                : `Applies to: ${cityIdsLabel(form.city_id, cities)}`}
-          </p>
+          <Label>City Assignment & Geofence Scope</Label>
+          {isCityAdmin ? (
+            <div className="rounded-lg border p-2.5 text-[12.5px]" style={{ borderColor: 'var(--brand)', background: 'rgba(234, 88, 12, 0.06)' }}>
+              <div className="font-semibold" style={{ color: 'var(--brand)' }}>
+                📍 Locked to City #{user?.city_id}: {cities.find((c) => String(c.id) === String(user?.city_id))?.title || 'Your Assigned City'}
+              </div>
+              <p className="mt-0.5 text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                Changes made here will apply <strong>strictly inside this city's geofence boundary</strong>. Other cities and Global India baseline will not be affected.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Cities this rate card applies to">
+                {(() => {
+                  // Only an explicit "0" lights "All cities"; an empty value on a new card means nothing picked yet.
+                  const all = String(form.city_id ?? '').trim() === '0'
+                  const picked = parseCityIds(form.city_id)
+                  const known = new Set(cities.map((c) => String(c.id)))
+                  const unknown = all ? [] : picked.filter((id) => id !== '0' && !known.has(id))
+                  const chip = (key, label, active, onClick, title) => (
+                    <button
+                      key={key}
+                      type="button"
+                      title={title}
+                      aria-pressed={active}
+                      onClick={onClick}
+                      className="rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors"
+                      style={
+                        active
+                          ? { borderColor: 'var(--brand)', background: 'rgba(234, 88, 12, 0.10)', color: 'var(--brand)' }
+                          : { borderColor: 'var(--border)', background: 'var(--bg)', color: 'var(--ink-muted)' }
+                      }
+                    >
+                      {label}
+                    </button>
+                  )
+                  return [
+                    chip('all', 'All cities', all, () => set('city_id', '0'), 'Use this rate card in every city'),
+                    ...cities.map((c) =>
+                      chip(
+                        c.id,
+                        Number(c.status) === 0 ? `${c.title} (inactive)` : c.title,
+                        !all && picked.includes(String(c.id)),
+                        () => set('city_id', toggleCityId(form.city_id, c.id)),
+                        `City ID ${c.id}`,
+                      ),
+                    ),
+                    ...unknown.map((id) =>
+                      chip(`u${id}`, `City #${id}`, true, () => set('city_id', toggleCityId(form.city_id, id)), 'This city no longer exists — click to remove'),
+                    ),
+                  ]
+                })()}
+              </div>
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--ink-faint)' }}>
+                {cities.length === 0
+                  ? 'Loading cities…'
+                  : parseCityIds(form.city_id).length === 0
+                    ? 'Pick at least one city, or All cities.'
+                    : `Applies to: ${cityIdsLabel(form.city_id, cities)}`}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2, Bike, Truck, Car, Zap, Search, Layers, Clock, Sliders, Sparkles } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -39,12 +39,44 @@ function getVehicleTone(catName) {
 }
 
 export default function RateCards() {
-  const { hasRole } = useAuth()
+  const { user, hasRole } = useAuth()
   const toast = useToast()
-  const canManage = hasRole('superadmin')
+  const isSuperAdmin = hasRole('superadmin')
+  const isCityAdmin = !isSuperAdmin && hasRole('admin')
+  const canManage = isSuperAdmin || hasRole('admin')
 
-  const fetcher = useCallback(() => api.get('/rate-cards').then((res) => res.data), [])
+  const citiesFetcher = useCallback(() => api.get('/cities').then((res) => res.data?.data || []), [])
+  const { data: rawCities } = useApiQuery(citiesFetcher)
+  const cities = useMemo(() => (Array.isArray(rawCities) ? rawCities : []), [rawCities])
+
+  const [selectedCityId, setSelectedCityId] = useState(() => {
+    if (isCityAdmin && user?.city_id) return String(user.city_id)
+    return '17'
+  })
+
+  const currentCityName = useMemo(() => {
+    if (isCityAdmin) {
+      return cities.find((c) => String(c.id) === String(user?.city_id))?.title || `City #${user?.city_id}`
+    }
+    if (selectedCityId === 'all') return 'All Cities'
+    if (selectedCityId === '17') return 'Global India Baseline'
+    return cities.find((c) => String(c.id) === String(selectedCityId))?.title || `City #${selectedCityId}`
+  }, [isCityAdmin, user?.city_id, selectedCityId, cities])
+
+  const fetcher = useCallback(() => {
+    const params = {}
+    if (isSuperAdmin && selectedCityId !== 'all') {
+      params.city_id = selectedCityId
+    }
+    return api.get('/rate-cards', { params }).then((res) => res.data)
+  }, [isSuperAdmin, selectedCityId])
+
   const { data, loading, error, refetch } = useApiQuery(fetcher)
+
+  useEffect(() => {
+    refetch()
+  }, [selectedCityId, refetch])
+
   const rateCards = useMemo(() => {
     if (Array.isArray(data?.data)) return data.data
     if (Array.isArray(data)) return data
@@ -151,6 +183,27 @@ export default function RateCards() {
     }
   }
 
+  const [cloning, setCloning] = useState(false)
+
+  async function handleCloneFromGlobal() {
+    const targetCity = isCityAdmin ? user?.city_id : (selectedCityId !== 'all' && selectedCityId !== '17' ? selectedCityId : null)
+    if (!targetCity) return
+    const cityName = cities.find((c) => String(c.id) === String(targetCity))?.title || `City #${targetCity}`
+    if (!window.confirm(`Copy all Global India Baseline rate cards into ${cityName}? This will create independent rate cards that you can customize specifically for ${cityName} without affecting any other city.`)) {
+      return
+    }
+    setCloning(true)
+    try {
+      const res = await api.post('/rate-cards/clone-from-global', { city_id: targetCity })
+      toast.success(res.data?.message || 'Rate cards successfully copied from Global Baseline!')
+      refetch()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not copy rate cards.')
+    } finally {
+      setCloning(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -183,6 +236,57 @@ export default function RateCards() {
               <Plus size={14} /> New rate card
             </button>
           </div>
+        )}
+      </div>
+
+      {/* Multi-City Scope Bar */}
+      <div className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between" style={{ background: 'var(--bg-muted)', borderColor: 'var(--border)' }}>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {isSuperAdmin ? (
+            <>
+              <span className="text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                📍 Multi-City Scope:
+              </span>
+              <select
+                value={selectedCityId}
+                onChange={(e) => setSelectedCityId(e.target.value)}
+                className="rounded-lg border px-3 py-1.5 text-[12.5px] font-semibold outline-none shadow-xs"
+                style={{ borderColor: 'var(--brand)', background: 'var(--bg)', color: 'var(--ink)' }}
+              >
+                <option value="17">🌐 Global India Baseline (city_id = 17)</option>
+                <option value="all">🌍 All Cities (Combined)</option>
+                {cities.filter(c => c.id !== 17).map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    🏙️ {c.title} (City #{c.id})
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-300" style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
+                📍 City Workspace: {currentCityName}
+              </span>
+              <span className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+                Rates configured here apply strictly inside your city's geofenced area.
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Action Button: Clone Global Baseline */}
+        {((isCityAdmin) || (isSuperAdmin && selectedCityId !== 'all' && selectedCityId !== '17')) && (
+          <button
+            type="button"
+            disabled={cloning}
+            onClick={handleCloneFromGlobal}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition-all hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-50"
+            style={{ borderColor: 'var(--border)', color: 'var(--ink)', background: 'var(--bg)' }}
+            title="Copy baseline rate cards from Global India to this city"
+          >
+            <Sparkles size={13} style={{ color: 'var(--brand)' }} />
+            {cloning ? 'Copying…' : 'Copy from Global Baseline'}
+          </button>
         )}
       </div>
 
@@ -367,6 +471,15 @@ export default function RateCards() {
                           </span>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          {rc.is_inherited ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 font-semibold text-amber-700 dark:text-amber-400" title="This rate card is inherited from Global India Baseline because no city override exists yet.">
+                              🌐 Inherited Global Baseline
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-400" title="This rate card is custom-configured specifically for this city.">
+                              🏙️ City Custom Override
+                            </span>
+                          )}
                           <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 font-medium text-emerald-600 dark:text-emerald-400">
                             👤 User: {rc.user_title || rc.title}
                           </span>
@@ -475,35 +588,39 @@ export default function RateCards() {
                       {canManage && (
                         <td className="whitespace-nowrap px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setGenerateBaseTarget(rc)}
-                              className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-amber-600 hover:text-amber-700 dark:text-amber-400"
-                              title="Auto-generate models (Model 1–5) from this rate card"
-                              aria-label="Generate Models"
-                            >
-                              <Sparkles size={14} />
-                            </button>
+                            {rc.generate_models_eligible && (
+                              <button
+                                type="button"
+                                onClick={() => setGenerateBaseTarget(rc)}
+                                className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                                title="Auto-generate models (Model 1–5) from this rate card"
+                                aria-label="Generate Models"
+                              >
+                                <Sparkles size={14} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => setFormTarget(rc)}
                               className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                              style={{ color: 'var(--ink-muted)' }}
-                              title="Edit rate card"
+                              style={{ color: rc.is_inherited && isCityAdmin ? 'var(--brand)' : 'var(--ink-muted)' }}
+                              title={rc.is_inherited && isCityAdmin ? '⚡ Customize City Override for your city' : 'Edit rate card'}
                               aria-label="Edit"
                             >
                               <Pencil size={14} />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteTarget(rc)}
-                              className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
-                              style={{ color: 'var(--danger)' }}
-                              title="Delete rate card"
-                              aria-label="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {(!rc.is_inherited || isSuperAdmin) && (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTarget(rc)}
+                                className="rounded p-1 transition-colors hover:bg-black/5 dark:hover:bg-white/5"
+                                style={{ color: 'var(--danger)' }}
+                                title="Delete rate card"
+                                aria-label="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}

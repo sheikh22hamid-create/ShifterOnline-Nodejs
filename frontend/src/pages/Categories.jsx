@@ -177,7 +177,7 @@ export default function Categories() {
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
-                      {c.city_id ? `#${c.city_id}` : 'All cities'}
+                      {c.city_id && c.city_id !== 17 && c.city_id !== 0 ? `City #${c.city_id}` : 'All cities (Global)'}
                     </td>
                     <td className="font-mono-data whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--ink-muted)' }}>
                       {c.sort_order ?? 0}

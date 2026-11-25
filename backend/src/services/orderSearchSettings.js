@@ -23,16 +23,24 @@ const COLUMN = {
  */
 async function getCitySettings(cityId, { fresh = false } = {}) {
   const id = Number(cityId);
-  if (!Number.isInteger(id) || id <= 0) return rules.defaultSettings();
   const hit = cache.get(id);
   if (!fresh && hit && Date.now() - hit.at < TTL_MS) return hit.value;
   try {
-    const row = await prisma.city_order_settings.findUnique({ where: { city_id: id } });
+    let row = null;
+    if (Number.isInteger(id) && id > 0 && id !== 17) {
+      row = await prisma.city_order_settings.findUnique({ where: { city_id: id } });
+    }
+    // Fallback to Global India baseline (17 or 0)
+    if (!row) {
+      row = await prisma.city_order_settings.findFirst({
+        where: { city_id: { in: [17, 0] } },
+      });
+    }
     const value = rules.normalizeRow(row);
     cache.set(id, { at: Date.now(), value });
     return value;
   } catch (err) {
-    logger.error(`orderSearchSettings.getCitySettings: city ${id} unreadable, using System 1 / guarantee off:`, err);
+    logger.error(`orderSearchSettings.getCitySettings: city ${id} unreadable, using fallback:`, err);
     return rules.defaultSettings();
   }
 }

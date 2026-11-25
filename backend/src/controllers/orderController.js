@@ -227,13 +227,13 @@ async function distanceEstimate(req, res) {
 /** Node mirror of the legacy PHP backend's packagelist.php — see pricingEngine.getPackageListForCategory. */
 async function packageListEstimate(req, res) {
   try {
-    const { uid, cat_id } = req.body;
+    const { uid, cat_id, city_id, plat, plong } = req.body;
 
     if (!cat_id) {
       return res.status(200).json({ ResponseCode: "401", Result: "false", ResponseMsg: "cat_id required" });
     }
 
-    const estimate = await pricingEngine.getPackageListForCategory({ uid, catId: cat_id });
+    const estimate = await pricingEngine.getPackageListForCategory({ uid, catId: cat_id, cityId: city_id, plat, plong });
     return res.status(200).json(estimate);
   } catch (err) {
     logger.error("packageListEstimate failed:", err);

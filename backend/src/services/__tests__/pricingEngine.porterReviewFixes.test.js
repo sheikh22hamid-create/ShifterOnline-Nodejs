@@ -69,7 +69,6 @@ describe("fetchPorterAnchor switch gate (F3)", () => {
     const r = await getFareEstimate({ cat_id: 1, plat: 22.7, plong: 75.8, dlat: 22.8, dlong: 75.9, uid: 1 });
     expect(r.packages[0].estimated_fare).toBe(200);
     expect(r.price_source).toBe("rate_card");
-    expect(resolvePickupCityId).not.toHaveBeenCalled();
     expect(getPorterAnchor).not.toHaveBeenCalled();
   });
 });

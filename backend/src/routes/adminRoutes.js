@@ -228,9 +228,10 @@ router.get("/rate-cards/porter-live", auth, rateCardController.getPorterLive);
 router.put("/rate-cards/porter-live", auth, authorize("superadmin"), rateCardController.updatePorterLive);
 router.post("/rate-cards/porter-live/test", auth, authorize("superadmin"), rateCardController.testPorterLive);
 router.get("/rate-cards/:id", auth, rateCardController.getOne);
-router.post("/rate-cards", auth, authorize("superadmin"), rateCardController.create);
-router.put("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.update);
-router.delete("/rate-cards/:id", auth, authorize("superadmin"), rateCardController.remove);
+router.post("/rate-cards/clone-from-global", auth, authorize("superadmin", "admin"), rateCardController.cloneFromGlobal);
+router.post("/rate-cards", auth, authorize("superadmin", "admin"), rateCardController.create);
+router.put("/rate-cards/:id", auth, authorize("superadmin", "admin"), rateCardController.update);
+router.delete("/rate-cards/:id", auth, authorize("superadmin", "admin"), rateCardController.remove);
 
 // --- Drivers & KYC Verification ---------------------------------------------
 router.get("/riders", auth, authorize(...RIDER_ROLES), scopeFilter, adminRiderController.list);

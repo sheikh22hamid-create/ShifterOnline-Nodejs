@@ -99,6 +99,9 @@ function serializePackage(pkg, category) {
 
 async function list(req, res) {
   try {
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? String(req.user.city_id) : null;
+
     const where = {};
     if (req.query.cat_id) where.cat_id = parseInt(req.query.cat_id, 10);
     if (req.query.status !== undefined) where.status = parseInt(req.query.status, 10);
@@ -110,15 +113,48 @@ async function list(req, res) {
 
     const catMap = new Map(categories.map((c) => [c.id, c]));
 
-    let filteredRows = rows;
-    if (req.query.city_id) {
-      // city_id is a legacy comma-separated VarChar column, not a real FK —
-      // substring match would false-positive ("1" inside "21"), so split first.
-      const target = String(parseInt(req.query.city_id, 10));
-      filteredRows = filteredRows.filter((p) => (p.city_id || "").split(",").map((s) => s.trim()).includes(target));
+    let resultRows = [];
+
+    if (!isSuperAdmin) {
+      // City Admin is strictly scoped to their assigned city
+      const targetCity = userCityId || "1";
+      // Find packages customized for this city
+      const citySpecific = rows.filter((p) => {
+        const parts = (p.city_id || "").split(",").map((s) => s.trim());
+        return parts.includes(targetCity);
+      });
+
+      // Find (cat_id, type) pairs that this city has already customized
+      const customizedKeys = new Set(citySpecific.map((p) => `${p.cat_id}_${p.type}`));
+
+      // Also include Global India baseline packages for any category not yet customized by this city
+      const inheritedGlobal = rows.filter((p) => {
+        const parts = (p.city_id || "").split(",").map((s) => s.trim());
+        const isGlobal = parts.includes("17") || parts.includes("0");
+        return isGlobal && !customizedKeys.has(`${p.cat_id}_${p.type}`);
+      });
+
+      resultRows = [...citySpecific, ...inheritedGlobal];
+    } else {
+      // Super Admin: check query city_id filter
+      if (req.query.city_id && req.query.city_id !== "all") {
+        const target = String(parseInt(req.query.city_id, 10));
+        resultRows = rows.filter((p) => (p.city_id || "").split(",").map((s) => s.trim()).includes(target));
+      } else {
+        resultRows = rows;
+      }
     }
 
-    const data = filteredRows.map((pkg) => serializePackage(pkg, catMap.get(pkg.cat_id)));
+    const data = resultRows.map((pkg) => {
+      const serialized = serializePackage(pkg, catMap.get(pkg.cat_id));
+      const pkgCity = String(pkg.city_id || "").trim();
+      const isGlobal = pkgCity === "17" || pkgCity === "0";
+      return {
+        ...serialized,
+        is_inherited: !isSuperAdmin ? isGlobal : (pkgCity === "17" || pkgCity === "0"),
+        is_city_override: !isGlobal,
+      };
+    });
 
     return res.status(200).json({ success: true, total: data.length, data });
   } catch (err) {
@@ -186,6 +222,19 @@ async function create(req, res) {
       return res.status(400).json({ success: false, message: `cat_id ${b.cat_id} does not exist` });
     }
 
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? String(req.user.city_id) : null;
+
+    let targetCityId = b.city_id ? String(b.city_id) : null;
+    if (!isSuperAdmin) {
+      if (!userCityId) {
+        return res.status(403).json({ success: false, message: "Forbidden: No city assigned to this admin account." });
+      }
+      targetCityId = userCityId;
+    } else if (!targetCityId) {
+      targetCityId = "17";
+    }
+
     const created = await prisma.tbl_package.create({
       data: {
         title: b.title,
@@ -196,7 +245,7 @@ async function create(req, res) {
         driver_info_sections: infoSections,
         type: b.type,
         cat_id: parseInt(b.cat_id, 10),
-        city_id: String(b.city_id),
+        city_id: targetCityId,
         min_charge: b.min_charge,
         per_km_charge: b.per_km_charge,
         use_linear_pricing: b.use_linear_pricing === true || b.use_linear_pricing === "true",
@@ -260,6 +309,19 @@ async function update(req, res) {
     const existing = await prisma.tbl_package.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ success: false, message: "Rate card not found" });
+    }
+
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? String(req.user.city_id) : null;
+
+    if (!isSuperAdmin) {
+      const existingCityParts = (existing.city_id || "").split(",").map((s) => s.trim());
+      if (!existingCityParts.includes(userCityId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Forbidden: You cannot modify rate cards of another city or Global Baseline. Please create or clone a rate card for your city.",
+        });
+      }
     }
 
     const b = req.body;
@@ -334,7 +396,11 @@ async function update(req, res) {
     if (b.type !== undefined) data.type = b.type;
     if (b.use_linear_pricing !== undefined) data.use_linear_pricing = b.use_linear_pricing === true || b.use_linear_pricing === "true";
     if (b.cat_id !== undefined) data.cat_id = parseInt(b.cat_id, 10);
-    if (b.city_id !== undefined) data.city_id = String(b.city_id);
+    if (!isSuperAdmin) {
+      data.city_id = userCityId;
+    } else if (b.city_id !== undefined) {
+      data.city_id = String(b.city_id);
+    }
     if (b.driver_per_trip !== undefined) data.driver_per_trip = String(b.driver_per_trip);
     if (b.commission_percent !== undefined && b.commission_percent !== "") {
       data.driver_per_percent = String(parseFloat(b.commission_percent) || 0);
@@ -378,6 +444,19 @@ async function remove(req, res) {
       return res.status(404).json({ success: false, message: "Rate card not found" });
     }
 
+    const isSuperAdmin = req.user?.role === "superadmin";
+    const userCityId = req.user?.city_id ? String(req.user.city_id) : null;
+
+    if (!isSuperAdmin) {
+      const existingCityParts = (existing.city_id || "").split(",").map((s) => s.trim());
+      if (!existingCityParts.includes(userCityId)) {
+        return res.status(403).json({
+          success: false,
+          message: "Forbidden: You cannot delete rate cards of another city or Global Baseline.",
+        });
+      }
+    }
+
     // Check if there are active in-progress orders using this rate card
     const activeOrderCount = await prisma.pkg_order.count({
       where: {
@@ -402,6 +481,66 @@ async function remove(req, res) {
     return res.status(200).json({ success: true, message: "Rate card deleted successfully" });
   } catch (err) {
     return internalError(res, err, "rateCards.remove");
+  }
+}
+
+async function cloneFromGlobal(req, res) {
+  try {
+    const isSuperAdmin = req.user?.role === "superadmin";
+    let targetCityId = req.body?.city_id ? parseInt(req.body.city_id, 10) : null;
+
+    if (!isSuperAdmin) {
+      targetCityId = req.user?.city_id ? parseInt(req.user.city_id, 10) : null;
+    }
+
+    if (!targetCityId || targetCityId === 17 || targetCityId === 0) {
+      return res.status(400).json({ success: false, message: "Valid target city_id is required." });
+    }
+
+    const city = await prisma.tbl_city.findUnique({ where: { id: targetCityId } });
+    if (!city) {
+      return res.status(404).json({ success: false, message: "Target city not found." });
+    }
+
+    const globalPackages = await prisma.tbl_package.findMany({
+      where: { city_id: "17", status: 1 },
+    });
+
+    if (globalPackages.length === 0) {
+      return res.status(404).json({ success: false, message: "No Global Baseline rate cards found to clone." });
+    }
+
+    let clonedCount = 0;
+    for (const pkg of globalPackages) {
+      const existing = await prisma.tbl_package.findFirst({
+        where: {
+          city_id: String(targetCityId),
+          cat_id: pkg.cat_id,
+          type: pkg.type,
+        },
+      });
+
+      if (!existing) {
+        const { id, ...dataToClone } = pkg;
+        const cleanTitle = pkg.title.replace(/\s*\(Global India Baseline\)/gi, "").trim();
+        await prisma.tbl_package.create({
+          data: {
+            ...dataToClone,
+            city_id: String(targetCityId),
+            title: `${cleanTitle} (${city.title})`,
+          },
+        });
+        clonedCount++;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully cloned ${clonedCount} rate cards into ${city.title}.`,
+      clonedCount,
+    });
+  } catch (err) {
+    return internalError(res, err, "rateCards.cloneFromGlobal");
   }
 }
 
@@ -937,4 +1076,5 @@ module.exports = {
   simulateFare,
   syncModelsFromSlabs,
   generateModels,
+  cloneFromGlobal,
 };

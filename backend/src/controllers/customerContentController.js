@@ -393,7 +393,27 @@ async function homeData(req, res) {
     const [bannerRow] = await prisma.tbl_banner.findMany({ where: { status: 1 }, orderBy: { id: "desc" }, take: 1 });
     const banner = bannerRow ? [{ id: bannerRow.id, img: bannerRow.img }] : [];
 
-    const categoryWhere = { cat_status: 1, ...(search ? { cat_name: { contains: search } } : {}) };
+    let effectiveCityId = req.body?.city_id ? Number(req.body.city_id) : null;
+    const lat = req.body?.lat || req.body?.plat;
+    const lng = req.body?.lng || req.body?.plong;
+    if (!effectiveCityId && lat && lng) {
+      try {
+        const { resolvePickupCityId } = require("../services/pickupCityService");
+        effectiveCityId = await resolvePickupCityId(lat, lng);
+      } catch (_) {}
+    }
+    if (!effectiveCityId) effectiveCityId = 0;
+
+    const categoryWhere = {
+      cat_status: 1,
+      ...(search ? { cat_name: { contains: search } } : {}),
+      OR: [
+        { city_id: effectiveCityId },
+        { city_id: 0 },
+        { city_id: 17 },
+        { city_id: null },
+      ],
+    };
     const rawCategories = await prisma.pkg_category.findMany({ where: categoryWhere, orderBy: { sort_order: "asc" } });
     const categories = rawCategories.map((cat) => ({
       id: cat.id,

@@ -1,5 +1,6 @@
 const prisma = require("../config/db");
 const { getRoadDistanceKm, getMultiStopDistanceKm, haversineKm } = require("../utils/geoDistance");
+const { resolvePickupCityId } = require("./pickupCityService");
 const {
   DEFAULT_SLAB_RATES,
   DEFAULT_MODEL_MULTIPLIERS,
@@ -364,11 +365,42 @@ function calculateDriverEarning(pkg, totalFare) {
   return Math.min(fare, Math.max(0, driverEarning));
 }
 
-async function getPackagesForCategory(cat_id) {
-  return prisma.tbl_package.findMany({
-    where: { cat_id: Number(cat_id), status: 1 },
+async function getPackagesForCategory(cat_id, cityId = null) {
+  const catIdNum = Number(cat_id);
+  const targetCity = cityId !== null && cityId !== undefined ? String(cityId).trim() : null;
+
+  const allPackages = await prisma.tbl_package.findMany({
+    where: { cat_id: catIdNum, status: 1 },
     orderBy: { sort_order: "asc" },
   });
+
+  if (!targetCity) {
+    return allPackages;
+  }
+
+  // Tier 1: City-specific packages (exact or comma-separated match)
+  if (targetCity !== "0" && targetCity !== "17") {
+    const citySpecific = allPackages.filter((p) => {
+      const parts = String(p.city_id || "").split(",").map((s) => s.trim());
+      return parts.includes(targetCity);
+    });
+    if (citySpecific.length > 0) {
+      return citySpecific;
+    }
+  }
+
+  // Tier 2: Global India baseline packages (city_id '17' or '0' or empty)
+  const globalPackages = allPackages.filter((p) => {
+    const parts = String(p.city_id || "").split(",").map((s) => s.trim());
+    return parts.includes("17") || parts.includes("0") || parts.length === 0 || parts[0] === "";
+  });
+
+  if (globalPackages.length > 0) {
+    return globalPackages;
+  }
+
+  // Fallback: any available packages for this category
+  return allPackages;
 }
 
 async function getPackageById(packageId) {
@@ -696,6 +728,14 @@ async function resolvePorterAnchor({ cityId = null, catId, plat, plong, dlat, dl
  * from" fare when no radius is supplied.
  */
 async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRangeKm = 1, extraMileCharge = 0, stops = [], body_type = "any", cityId = null }) {
+  let effectiveCityId = cityId;
+  if (!effectiveCityId && plat && plong) {
+    try {
+      effectiveCityId = await resolvePickupCityId(plat, plong);
+    } catch (_) {}
+  }
+  if (!effectiveCityId) effectiveCityId = 17;
+
   const routeStops = Array.isArray(stops) ? stops : [];
   const stopSettings = await getAddStopSettings(cat_id);
   if (routeStops.length > stopSettings.maxExtraStops) throw new Error(`A maximum of ${stopSettings.maxExtraStops} extra stops is allowed`);
@@ -712,7 +752,7 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
 
   const [{ distanceKm, durationMin }, packages, discount, slabPricingConfig, extraBodyCharge, categoryInfo, porterFetch] = await Promise.all([
     routeStops.length ? getMultiStopDistanceKm(distancePoints) : getRoadDistanceKm(Number(plat), Number(plong), Number(dlat), Number(dlong)),
-    getPackagesForCategory(cat_id),
+    getPackagesForCategory(cat_id, effectiveCityId),
     getActivePlanDiscount(uid),
     getSlabPricingConfig(),
     getBodyTypeCharge(cleanBodyType),
@@ -771,7 +811,9 @@ async function getFareEstimate({ cat_id, plat, plong, dlat, dlong, uid, radiusRa
       : grossBreakdown;
 
     return {
+      id: pkg.id,
       package_id: pkg.id,
+      city_id: pkg.city_id,
       title: pkg.title,
       user_title: pkg.user_title || pkg.title,
       driver_title: pkg.driver_title || pkg.title,
@@ -884,9 +926,17 @@ async function getDistanceEstimate({ plat, plong, dlat, dlong }) {
  * it, only the driver app's own separate rate-card screens do, unrelated
  * to this fare-estimate flow.
  */
-async function getPackageListForCategory({ uid, catId }) {
+async function getPackageListForCategory({ uid, catId, cityId = null, plat = null, plong = null }) {
+  let effectiveCityId = cityId;
+  if (!effectiveCityId && plat && plong) {
+    try {
+      effectiveCityId = await resolvePickupCityId(plat, plong);
+    } catch (_) {}
+  }
+  if (!effectiveCityId) effectiveCityId = 17;
+
   const [packages, discount, stopSettings] = await Promise.all([
-    getPackagesForCategory(catId),
+    getPackagesForCategory(catId, effectiveCityId),
     getActivePlanDiscount(uid),
     getAddStopSettings(catId),
   ]);
