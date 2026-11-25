@@ -708,4 +708,19 @@ public class PDOrderItem implements Parcelable {
 	public void setDistance(String distance) {
 		this.distance = distance;
 	}
+
+	// Loading/Unloading labour (spec 2026-11-24): comes through on the dispatch offer + order detail.
+	@SerializedName("labour_opted")
+	private boolean labourOpted;
+	@SerializedName("labour_charge_amount")
+	private String labourChargeAmount;
+	@SerializedName("labour_declared_json")
+	private String labourDeclaredJson;
+	@SerializedName("labour_status")
+	private String labourStatus;
+
+	public boolean isLabourOpted() { return labourOpted; }
+	public String getLabourChargeAmount() { return labourChargeAmount; }
+	public String getLabourDeclaredJson() { return labourDeclaredJson; }
+	public String getLabourStatus() { return labourStatus; }
 }

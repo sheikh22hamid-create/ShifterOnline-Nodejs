@@ -93,6 +93,25 @@ public interface NodeService {
     @POST("api/rider/body-type")
     Call<JsonObject> setBodyType(@Body Map<String, Object> body);
 
+    // Loading/Unloading labour (spec 2026-11-24, Phase 1). Driver opts into a labour_mode
+    // (drive_only | light_only | full_loader); proposes an on-site extra (corrected inputs + an
+    // uploaded photo PATH from upload-photo); and raises a dispute that freezes the escrow.
+    @POST("api/rider/labour-mode")
+    Call<JsonObject> setLabourMode(@Body Map<String, Object> body);
+
+    // {order_id, rider_id, mode, heavyItem, legs:[...], photo:"images/order_photos/<file>"}
+    @POST("api/order/labour/extra")
+    Call<JsonObject> labourProposeExtra(@Body Map<String, Object> body);
+
+    // {order_id, raised_by:"driver", raiser_id, reason}
+    @POST("api/order/labour/dispute")
+    Call<JsonObject> labourRaiseDispute(@Body Map<String, Object> body);
+
+    // Reusable image upload (field name must be "photo"); returns {Result, path:"images/order_photos/<file>"}.
+    @retrofit2.http.Multipart
+    @POST("api/order/upload-photo")
+    Call<JsonObject> uploadOrderPhoto(@Part MultipartBody.Part photo);
+
     // Node port of rider_api/reg_user.php's "automatic" registration path
     // (document numbers + isVerified flags in `documents`, not raw card
     // images - see riderAuthController.js registerHandler). The "manual"

@@ -69,6 +69,11 @@ public class OrderDetailsActivity extends LocaleAwareActivity
     private ActivityOrderDetailsBinding binding;
 
     private PDOrderItem orderItem;
+
+    // Loading/Unloading (spec 2026-11-24): photo picker for the on-site "add extra" flow + the
+    // corrected inputs held between the input dialog and the photo result.
+    private androidx.activity.result.ActivityResultLauncher<String> labourPhotoPicker;
+    private java.util.Map<String, Object> pendingLabourExtra;
     private SessionManager sessionManager;
     private CustPrograssbar custPrograssbar;
     private RiderData riderData;
@@ -974,6 +979,24 @@ public class OrderDetailsActivity extends LocaleAwareActivity
         isWaitingForPayment = false;
         binding = ActivityOrderDetailsBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        // Loading/Unloading: after the driver fills the corrected inputs, they pick a photo here, which
+        // is uploaded then proposed as the on-site extra (customer approves it server-side).
+        labourPhotoPicker = registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.GetContent(), uri -> {
+            if (uri == null || pendingLabourExtra == null || orderItem == null) return;
+            java.io.File photo = com.shifter.driver.utility.LabourFeature.uriToCacheFile(this, uri);
+            if (photo == null) {
+                Toast.makeText(this, "Photo nahi mila", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            java.util.List<java.util.Map<String, Object>> legs =
+                    (java.util.List<java.util.Map<String, Object>>) pendingLabourExtra.get("legs");
+            com.shifter.driver.utility.LabourFeature.submitExtra(this, orderItem.getId(),
+                    String.valueOf(riderData.getId()), String.valueOf(pendingLabourExtra.get("mode")),
+                    Boolean.TRUE.equals(pendingLabourExtra.get("heavyItem")), legs, photo, null);
+            pendingLabourExtra = null;
+        });
         applySystemWindowInsets(binding.getRoot());
         setupUI();
         setupClicks();
@@ -1311,6 +1334,30 @@ public class OrderDetailsActivity extends LocaleAwareActivity
 
         binding.txtEarning.setText(
                 sessionManager.getStringData(SessionManager.currency) + orderItem.getTotal());
+
+        // Loading/Unloading: show the declared labour + locked amount (no surprise lifting), and wire
+        // the on-site "Extra labour" (corrected inputs + photo) and the "Dikkat / Dispute" actions.
+        String labourInfo = com.shifter.driver.utility.LabourFeature.labourSummary(
+                orderItem.isLabourOpted(), orderItem.getLabourChargeAmount(), orderItem.getLabourDeclaredJson());
+        if (labourInfo != null) {
+            binding.txtLabourInfo.setText(labourInfo);
+            binding.txtLabourInfo.setVisibility(View.VISIBLE);
+            binding.llLabourActions.setVisibility(View.VISIBLE);
+            binding.txtLabourDispute.setOnClickListener(v ->
+                    com.shifter.driver.utility.LabourFeature.showDisputeDialog(
+                            this, orderItem.getId(), String.valueOf(riderData.getId()), null));
+            binding.txtLabourExtra.setOnClickListener(v ->
+                    com.shifter.driver.utility.LabourFeature.showAddExtraInputDialog(this, (mode, heavyItem, legs) -> {
+                        pendingLabourExtra = new java.util.HashMap<>();
+                        pendingLabourExtra.put("mode", mode);
+                        pendingLabourExtra.put("heavyItem", heavyItem);
+                        pendingLabourExtra.put("legs", legs);
+                        labourPhotoPicker.launch("image/*");
+                    }));
+        } else {
+            binding.txtLabourInfo.setVisibility(View.GONE);
+            binding.llLabourActions.setVisibility(View.GONE);
+        }
 
         DecimalFormat df = new DecimalFormat("#.##");
         try {

@@ -88,6 +88,9 @@ public class AccountFragment extends Fragment implements GetResult.MyListener {
         binding.lvlPremiumPlans.setOnClickListener(this::onBindClick);
         binding.lvlReferEarn.setOnClickListener(this::onBindClick);
         binding.lvlOfflineAlerts.setOnClickListener(v -> startActivity(new Intent(requireContext(), com.shifter.driver.activity.OfflineAlertsActivity.class)));
+        // Loading/Unloading opt-in — drive_only (default) means this driver is never offered labour jobs.
+        binding.lvlLabourMode.setOnClickListener(v ->
+                com.shifter.driver.utility.LabourFeature.showLabourModeDialog(getActivity(), String.valueOf(user.getId()), "drive_only", null));
         binding.swOfflineAlerts.setOnCheckedChangeListener((button, checked) -> {
             if (!button.isPressed()) return; // only the driver's own tap, not the refresh in onResume
             com.shifter.driver.utility.OfflineAlerts.setEnabled(requireContext(), checked);
