@@ -179,11 +179,19 @@ async function fareEstimate(req, res) {
     });
 
     // Loading/Unloading labour (spec 2026-11-24): opt-in, own line, never folded into the transport
-    // fare. Omitted unless the client asks and the feature is enabled for the city.
+    // fare. The city decides enablement — prefer an explicit city_id, else the user's registered city
+    // (the app does not keep city_id client-side). `labour_enabled` ALWAYS ships so the client knows
+    // whether to show the opt-in; the priced `labour` line ships only once the customer has declared.
+    let labourCityId = city_id;
+    if (labourCityId == null && uid != null) {
+      const u = await prisma.tbl_user.findUnique({ where: { id: Number(uid) }, select: { city_id: true } }).catch(() => null);
+      labourCityId = u?.city_id ?? null;
+    }
+    const labourConfig = await labourSettings.getLabourConfig(labourCityId);
+    estimate.labour_enabled = labourConfig.enabled;
     const labourInput = req.body.labour;
     if (labourInput && Array.isArray(labourInput.legs) && labourInput.legs.length) {
-      const config = await labourSettings.getLabourConfig(req.body.city_id);
-      estimate.labour = labourResponse(labourInput, config);
+      estimate.labour = labourResponse(labourInput, labourConfig);
     }
 
     return res.status(200).json(estimate);

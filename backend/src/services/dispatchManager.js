@@ -371,6 +371,12 @@ function buildOrderRequestPayload(order, packageId, distanceKm, tripTotal, packa
     covered_charge: String(order.covered_charge || "0.00"),
     order_details: `${order.category || "Bike"} (${modelName}) - ${order.package_weight || 0}${order.body_type === "covered" ? " · [Covered Body]" : (order.body_type === "half" ? " · [Half Body]" : (order.body_type === "open" ? " · [Open Body]" : ""))}${formatGoodsType(order) ? `\nGoods: ${formatGoodsType(order)}` : ""}`,
     goods_type: formatGoodsType(order),
+    // Loading/Unloading (spec 2026-11-24): the driver sees the declared labour + locked amount BEFORE
+    // accepting, so there is no surprise lifting. Only meaningful when held; defaults are harmless.
+    labour_opted: order.labour_opted === true || order.labour_opted === 1,
+    labour_charge_amount: String(order.labour_charge_amount || "0"),
+    labour_declared_json: order.labour_declared_json || "",
+    labour_status: order.labour_status || "none",
     popup_duration: String(POPUP_TIMEOUT_MS / 1000),
     // Absolute deadline (server epoch ms), armed off the same `armedAt` the
     // lock/scheduleExpiry/acceptOrder freshness check all share — NOT a
