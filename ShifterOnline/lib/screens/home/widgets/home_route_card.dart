@@ -5,6 +5,7 @@ import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/app_buttons.dart';
 import '../../../theme/widgets/app_segmented.dart';
 import '../../../theme/widgets/pressable_scale.dart';
+import '../../../utils/address_format.dart';
 import 'stop_swap_list.dart';
 
 /// Floating route card on Home: pickup, stops, drop, booking mode and the "Choose vehicle" action.
@@ -68,7 +69,7 @@ class HomeRouteCard extends StatelessWidget {
           _RouteRow(
             marker: _Dot(color: p.success, ring: p.successTint, square: false),
             label: 'Pickup'.tr,
-            text: pickupAddress ?? 'Detecting current location...'.tr,
+            text: pickupAddress == null ? 'Detecting current location...'.tr : cleanAddress(pickupAddress),
             textColor: p.ink,
             onTap: onPickupTap,
           ),
@@ -89,7 +90,7 @@ class HomeRouteCard extends StatelessWidget {
           _RouteRow(
             marker: _Dot(color: p.brand, ring: p.brandTint, square: true),
             label: 'Drop'.tr,
-            text: dropAddress ?? 'Where is it going?'.tr,
+            text: dropAddress == null ? 'Where is it going?'.tr : cleanAddress(dropAddress),
             textColor: dropAddress == null ? p.inkMuted : p.ink,
             onTap: onDropTap,
             trailing: canAddStop
@@ -133,7 +134,7 @@ extension on HomeRouteCard {
       _RouteRow(
         marker: _HollowDot(color: p.inkSubtle),
         label: 'Stop @n'.trParams({'n': '${i + 1}'}),
-        text: stop['address']?.toString() ?? 'Selected location'.tr,
+        text: stop['address'] == null ? 'Selected location'.tr : cleanAddress(stop['address'].toString()),
         textColor: p.ink,
         onTap: () => onStopTap(i),
         wrapDragBody: wrapDragBody,

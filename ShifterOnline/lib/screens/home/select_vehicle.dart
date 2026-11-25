@@ -28,15 +28,17 @@ import 'coupon_sheet.dart';
 import 'gst_details_section.dart';
 import 'package:goParcel/services/booking_guarantee_api_service.dart';
 import 'package:goParcel/utils/booking_guarantee.dart';
+import 'package:goParcel/utils/address_format.dart';
 import 'vehicle_details_screen.dart';
 import 'waiting_screen.dart';
 import '../myorder/trackingway.dart';
-import 'widgets/vehicle_option_card.dart';
 import 'widgets/booking_type_card.dart';
 import 'widgets/offers_details_card.dart';
 import '../../theme/widgets/app_sheet.dart';
 import '../../theme/widgets/route_marker.dart';
 import 'widgets/booking_option_widgets.dart';
+import 'widgets/vehicle_strip_chip.dart';
+import 'widgets/labour_sheet.dart';
 import '../../theme/app_tokens.dart';
 import '../../theme/widgets/app_buttons.dart';
 import '../../theme/widgets/app_info_banner.dart';
@@ -107,11 +109,28 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
   bool _freeRideChanceAvailable = false;
   bool _freeRideChanceLocked = false;
   String? _freeRideChanceMessage;
+
+  // Loading/Unloading labour (spec 2026-11-24, Phase 1 Model A): opt-in, priced by the server from the
+  // customer's declaration, shown as one locked line that is never folded into the transport fare.
+  // `_labourEnabled` comes from the fare-estimate (`labour_enabled`, per the user's city). The declared
+  // inputs live in `_labourDeclaration`; the server returns `_labourCharge` + `_labourOverCap`.
+  bool _labourEnabled = false;
+  bool _labourOptedIn = false;
+  Map<String, dynamic>? _labourDeclaration;
+  num? _labourCharge;
+  bool _labourOverCap = false;
+  bool _labourPricing = false;
   String? _availabilityError;
   int? _radiusSuggestionShownFor;
   String? _modelsError;
   List<Map<String, dynamic>> _vehicles = [];
   List<Map<String, dynamic>> _models = [];
+  // "Other platform" price comparison from the fare estimate (null unless Porter priced it and we're cheaper).
+  Map<String, dynamic>? _comparison;
+  // Delivery-tier list starts collapsed: only the chosen (cheapest default) tier
+  // shows, the rest hide behind "More delivery options" so first-time / non-techy
+  // users aren't overwhelmed by 5 English tiers + a cumulative-toggle rule.
+  bool _showAllModels = false;
   int? _selectedModelIndex;
   double _guaranteeAmount = 0;
   int _guaranteeRequestSeq = 0;
@@ -407,9 +426,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     return fallback;
   }
 
-  String _unavailableReason(Map<String, dynamic> option) =>
-      _availabilityValue(option, ['reason_unavailable'], 'No drivers nearby');
-
   String _startingFare(Map<String, dynamic> option) {
     final value = _availabilityValue(option, ['starting_fare', 'price', 'fare_min']);
     return value.isEmpty ? 'Fare at checkout' : 'From ₹${_number(value).round()}';
@@ -471,7 +487,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     if (!mounted) return;
     setState(() { _route = points; _loadingRoute = false; });
     if (points.length > 1) _fitRoute(points);
-    _refreshAvailability();
   }
 
   double _fallbackDistanceKm() {
@@ -525,25 +540,10 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     List<Map<String, dynamic>> availabilityRows,
     Map<String, dynamic> payload,
   ) {
-    final rawCategories = <Map<String, dynamic>>[
+    final categories = <Map<String, dynamic>>[
       ..._mapList(payload['categories']),
       ..._mapList(payload['vehicle_categories']),
     ];
-
-    // Dynamic distance filtering: only include vehicles where trip distance <= category max_distance
-    final categories = rawCategories.where((category) {
-      if (_distanceKm != null && _distanceKm! > 0) {
-        final rawMax = category['max_distance'] ?? category['max_distance_km'];
-        if (rawMax != null) {
-          final maxDist = double.tryParse(rawMax.toString());
-          if (maxDist != null && maxDist > 0 && _distanceKm! > maxDist) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }).toList();
-
     final options = <Map<String, dynamic>>[];
     final seen = <String>{};
 
@@ -554,15 +554,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         Map<String, dynamic>? availableMatch;
         Map<String, dynamic>? anyMatch;
         for (final row in availabilityRows) {
-          if (_distanceKm != null && _distanceKm! > 0) {
-            final rawMax = row['max_distance'] ?? row['max_distance_km'];
-            if (rawMax != null) {
-              final maxDist = double.tryParse(rawMax.toString());
-              if (maxDist != null && maxDist > 0 && _distanceKm! > maxDist) {
-                continue;
-              }
-            }
-          }
           final rowId = _responseCategoryId(row);
           final rowName = _responseCategoryName(row).toLowerCase();
           if ((categoryId.isNotEmpty && rowId == categoryId) ||
@@ -624,9 +615,6 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       final body = <String, dynamic>{
         'pickup_lat': _pickup.latitude,
         'pickup_lng': _pickup.longitude,
-        'drop_lat': _drop.latitude,
-        'drop_lng': _drop.longitude,
-        if (_distanceKm != null && _distanceKm! > 0) 'distance_km': _distanceKm,
         'radius_km': _selectedRadiusKm,
         // Scheduled (2) and next-day (3) orders dispatch later, so every
         // vehicle must stay selectable even with no driver online right now.
@@ -680,9 +668,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _vehicles = refreshed;
         _availabilityError = decoded['serviceable'] == true || refreshed.any((v) => _isAvailable(v['availability']))
             ? null
-            : (_distanceKm != null && _distanceKm! > 0 && refreshed.isEmpty)
-                ? "No vehicle available for this trip distance (${_distanceKm!.toStringAsFixed(1)} KM). Please choose a shorter route or different locations."
-                : "No drivers available near your pickup location right now.";
+            : "No drivers available near your pickup location right now.";
         _selectedIndex = retainedIndex >= 0 ? retainedIndex : -1;
         _selectedModelIndex = null;
         _vehicleDetailNotes = notes;
@@ -802,7 +788,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       setState(() { _models = []; _modelsError = 'Delivery options are unavailable for this vehicle.'; });
       return;
     }
-    setState(() { _loadingModels = true; _modelsError = null; _models = []; _selectedModelIndex = null; });
+    setState(() { _loadingModels = true; _modelsError = null; _models = []; _selectedModelIndex = null; _comparison = null; });
     // Service area: pickup and drop are checked against this vehicle's rules. Done again whenever the vehicle or a
     // location changes (this runs for both). The server is the final judge at booking; this just says so early.
     final areaMessage = await ServiceAreaApiService.routeBlockedMessage(
@@ -829,6 +815,8 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       'radius_km': _selectedRadiusKm,
       'body_type': _selectedBodyType,
       if (uid != null) 'uid': int.tryParse(uid.toString()) ?? uid,
+      // Price the declared labour on this same call so the locked total moves with the vehicle/route.
+      if (_labourOptedIn && _labourDeclaration != null) 'labour': _labourDeclaration,
     });
     final rawModels = response is Map ? response['packages'] : null;
     if (!mounted) return;
@@ -871,16 +859,43 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
         _planDiscountPercent = _number(response['plan_discount_percent']);
         _planDiscountMaxCap = _number(response['plan_discount_max_cap']);
         _vehicleMaxExtraStops = int.tryParse((response['max_extra_stops'] ?? '').toString());
+        _comparison = response['comparison'] is Map ? Map<String, dynamic>.from(response['comparison']) : null;
+        // Loading/Unloading labour: the city's enablement always ships; the priced line ships only
+        // once a declaration was sent. Keep the opt-in visible, refresh the locked total / over-cap.
+        _labourEnabled = response['labour_enabled'] == true;
+        if (!_labourEnabled) { _labourOptedIn = false; _labourDeclaration = null; _labourCharge = null; _labourOverCap = false; }
+        final labour = response['labour'];
+        if (labour is Map) {
+          _labourCharge = _number(labour['charge']);
+          _labourOverCap = labour['overCap'] == true;
+        } else if (_labourOptedIn && _labourDeclaration != null) {
+          // declared but the server returned no price (feature off mid-flow): drop it safely.
+          _labourCharge = null; _labourOverCap = false;
+        }
+        _labourPricing = false;
       });
       _refreshGuaranteeQuote();
     } else {
-      setState(() { _loadingModels = false; _modelsError = _text(response is Map ? response['ResponseMsg'] : null, 'Could not load delivery options.'); });
+      setState(() { _loadingModels = false; _labourPricing = false; _modelsError = _text(response is Map ? response['ResponseMsg'] : null, 'Could not load delivery options.'); });
     }
     // The section grows once options arrive; re-align so they are fully visible.
     if (_autoScrollPending) {
       _autoScrollPending = false;
       _scrollToVehicleDetails();
     }
+  }
+
+  /// Open the saaman-uthana declaration sheet, then re-price on the same fare-estimate call so the
+  /// locked total reflects the chosen vehicle/route. "Hata do" clears labour back to a plain booking.
+  Future<void> _openLabourSheet() async {
+    final result = await showLabourSheet(context, initial: _labourOptedIn ? _labourDeclaration : null);
+    if (result == null || !mounted) return;
+    if (result['removed'] == true) {
+      setState(() { _labourOptedIn = false; _labourDeclaration = null; _labourCharge = null; _labourOverCap = false; });
+      return;
+    }
+    setState(() { _labourOptedIn = true; _labourDeclaration = result; _labourPricing = true; _labourOverCap = false; _labourCharge = null; });
+    await _loadModelsForSelectedVehicle(preserveModelKey: _selectedModelIndex != null && _selectedModelIndex! < _models.length ? _modelKey(_models[_selectedModelIndex!]) : null);
   }
 
   Future<void> _showRadiusSuggestionDialog(Map<String, dynamic> suggestion) async {
@@ -1124,6 +1139,9 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       if (_gstDetails != null) 'gst_number': _text(_gstDetails!['gstin']),
       'send_sender_whatsapp': _pickupData['send_whatsapp'] == true,
       'send_receiver_whatsapp': _dropData['send_whatsapp'] == true,
+      // Loading/Unloading: send the declaration only when opted in and within cap. Over-cap books
+      // transport-only (no labour). The server re-prices + holds the escrow from this declaration.
+      if (_labourOptedIn && _labourDeclaration != null && !_labourOverCap) 'labour': _labourDeclaration,
       if (receiverOn) 'receiver_pays': true,
       if (_freeBookingRequested) 'free_booking': true,
       if (receiverOn) 'receiver_commission_percent': receiverPay.percent,
@@ -1522,7 +1540,12 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       Text(_modelTitle(model), style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 12)),
       const SizedBox(height: 14),
       row('Base fare', '₹${baseFare.toStringAsFixed(2)}'),
-      row('Distance charge (${distance.toStringAsFixed(1)} km × ₹${perKmCharge.toStringAsFixed(2)}/km)', '₹${distanceCharge.toStringAsFixed(2)}'),
+      // Only show the distance row when there's an actual distance charge. For
+      // short trips (and slabs where distance is folded into base fare) this is
+      // ₹0, and rendering "3.8 km × ₹0.00/km = ₹0.00" reads like a broken rate
+      // to customers — so hide it, same as the other optional charge rows below.
+      if (distanceCharge > 0)
+        row('Distance charge (${distance.toStringAsFixed(1)} km × ₹${perKmCharge.toStringAsFixed(2)}/km)', '₹${distanceCharge.toStringAsFixed(2)}'),
       if (radiusCharge > 0) row('Search radius charge ($_selectedRadiusKm km)', '₹${radiusCharge.toStringAsFixed(2)}'),
       if (nightCharge > 0) row('Night charge', '₹${nightCharge.toStringAsFixed(2)}'),
       // Was silently missing — pkg.service_charge_percent is added into
@@ -1544,7 +1567,13 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           color: Colors.green,
         ),
       const Divider(height: 24),
-      row('Estimated total', '₹${fee.toStringAsFixed(2)}', bold: true, color: linercolor),
+      row('Total payable', '₹${fee.toStringAsFixed(2)}', bold: true, color: linercolor),
+      const SizedBox(height: 10),
+      Text('All-inclusive — no platform fee or GST added to this fare.',
+          style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11.5, height: 1.3)),
+      const SizedBox(height: 3),
+      Text('Fixed for this route. It only changes if you add a stop, change the drop, or the vehicle has to wait.',
+          style: TextStyle(color: greaycolor, fontFamily: 'Gilroy_Medium', fontSize: 11.5, height: 1.3)),
     ]))));
   }
 
@@ -1610,24 +1639,31 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
                     _loadingVehicles()
                   else if (_vehicles.isEmpty)
                     _emptyState()
-                  else
-                    Column(
+                  else ...[
+                    // Horizontal, always-visible strip of every vehicle type (Porter-style), so the user sees
+                    // all options at a glance instead of only the first one with its expanded card.
+                    SizedBox(
                       key: _vehicleRowKey,
-                      children: [
-                        for (var index = 0; index < _vehicles.length; index++) ...[
-                          if (index > 0) const SizedBox(height: 10),
-                          KeyedSubtree(
-                            key: index == _selectedIndex ? _selectedCardKey : null,
-                            child: _vehicleCard(index, _vehicles[index]),
-                          ),
-                          // The chosen vehicle's options (body type, models, fare) open right under its card.
-                          if (index == _selectedIndex && _selected != null && _isAvailable(_selected!['availability'])) ...[
-                            const SizedBox(height: 10),
-                            _selectedVehicleSection(),
-                          ],
-                        ],
-                      ],
+                      height: 132,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        padding: EdgeInsets.zero,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: _vehicles.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 10),
+                        itemBuilder: (_, index) => _vehicleStripChip(index, _vehicles[index]),
+                      ),
                     ),
+                    if (_comparison != null && _selected != null && _isAvailable(_selected!['availability'])) ...[
+                      const SizedBox(height: 12),
+                      _comparisonCard(),
+                    ],
+                    // The chosen vehicle's options (body type, models, fare) open right below the strip.
+                    if (_selected != null && _isAvailable(_selected!['availability'])) ...[
+                      const SizedBox(height: 14),
+                      KeyedSubtree(key: _selectedCardKey, child: _selectedVehicleSection()),
+                    ],
+                  ],
                   const SizedBox(height: 14),
                   if (_selected != null && _isAvailable(_selected!['availability'])) ...[
                     const SizedBox(height: 14),
@@ -1689,7 +1725,7 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     }
 
     String addressLine(Map<String, dynamic> data) {
-      final addr = (data['address'] ?? data['c_ddress'] ?? '').toString().trim();
+      final addr = cleanAddress((data['address'] ?? data['c_ddress'] ?? '').toString());
       if (addr.isNotEmpty) return addr;
       final hno = (data['hno'] ?? '').toString().trim();
       return hno.isNotEmpty ? hno : "Selected Location";
@@ -1939,48 +1975,136 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
     );
   }
 
-  Widget _vehicleCard(int index, Map<String, dynamic> option) {
+  Widget _vehicleStripChip(int index, Map<String, dynamic> option) {
     final available = _isAvailable(option['availability']);
     final selected = index == _selectedIndex && available;
     final image = _image(option);
-    final capacity = _availabilityValue(option, ['max_weight_kg', 'capacity', 'max_weight']);
-    final eta = _availabilityValue(option, ['estimated_pickup_minutes', 'eta_minutes', 'eta']);
-    final meta = [if (capacity.isNotEmpty) '$capacity kg', if (eta.isNotEmpty) '$eta mins'].join(' · ');
-    return VehicleOptionCard(
+    return VehicleStripChip(
       name: _vehicleName(option),
       imageUrl: image.isEmpty ? null : Config.resolveImageUrl(image),
-      meta: meta,
       price: _startingFare(option),
-      unavailableText: _unavailableReason(option),
+      unavailableText: 'N/A',
       selected: selected,
       available: available,
-      onTap: available
-          ? () {
-              setState(() {
-                _selectedIndex = index;
-                _selectedModelIndex = null;
-                final allowed = _getAllowedBodyTypes(_vehicles[index]);
-                if (allowed.isEmpty || (_selectedBodyType != 'any' && !allowed.contains(_selectedBodyType))) {
-                  _selectedBodyType = 'any';
-                }
-              });
-              _autoScrollPending = true;
-              _scrollToVehicleDetails();
-              _loadModelsForSelectedVehicle();
-            }
-          : () {
-              Get.snackbar(
-                'Driver Unavailable',
-                'No ${_vehicleName(option)} drivers found within $_selectedRadiusKm km. Please select an available vehicle or tap "Search area" to expand radius.',
-                snackPosition: SnackPosition.BOTTOM,
-                backgroundColor: notifier.isDark ? const Color(0xff2A2A2A) : Colors.white,
-                colorText: notifier.text,
-                icon: const Icon(Icons.info_outline_rounded, color: Colors.orange),
-                margin: const EdgeInsets.all(16),
-                borderRadius: 12,
-                duration: const Duration(seconds: 3),
-              );
-            },
+      onTap: available ? () => _handleVehicleTap(index) : () => _showVehicleUnavailable(option),
+    );
+  }
+
+  void _handleVehicleTap(int index) {
+    setState(() {
+      _selectedIndex = index;
+      _selectedModelIndex = null;
+      final allowed = _getAllowedBodyTypes(_vehicles[index]);
+      if (allowed.isEmpty || (_selectedBodyType != 'any' && !allowed.contains(_selectedBodyType))) {
+        _selectedBodyType = 'any';
+      }
+    });
+    _autoScrollPending = true;
+    _scrollToVehicleDetails();
+    _loadModelsForSelectedVehicle();
+  }
+
+  void _showVehicleUnavailable(Map<String, dynamic> option) {
+    Get.snackbar(
+      'Driver Unavailable',
+      'No ${_vehicleName(option)} drivers found within $_selectedRadiusKm km. Please select an available vehicle or tap "Search area" to expand radius.',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: notifier.isDark ? const Color(0xff2A2A2A) : Colors.white,
+      colorText: notifier.text,
+      icon: const Icon(Icons.info_outline_rounded, color: Colors.orange),
+      margin: const EdgeInsets.all(16),
+      borderRadius: 12,
+      duration: const Duration(seconds: 3),
+    );
+  }
+
+  String _formatQuoteTime(dynamic iso) {
+    try {
+      final s = iso?.toString() ?? '';
+      if (s.isEmpty) return '';
+      final dt = DateTime.tryParse(s)?.toLocal();
+      return dt == null ? '' : DateFormat('h:mm a').format(dt);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // Porter-style "other platform" price comparison card: the live competitor quote (struck) vs our cheapest
+  // tier. Shown only when the server sends a genuine saving (see pricingEngine getFareEstimate `comparison`).
+  Widget _comparisonCard() {
+    final c = _comparison!;
+    final p = AppPalette.current;
+    final other = _number(c['other_platform_fare']).round();
+    final our = _number(c['our_fare']).round();
+    final save = _number(c['save_amount']).round();
+    final title = _text(c['our_title'], 'Super Saver');
+    final when = _formatQuoteTime(c['quoted_at']);
+    const green = Color(0xFF0E9A5A);
+    const greenInk = Color(0xFF0B7A47);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFBEEBD3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: p.canvas, borderRadius: BorderRadius.circular(7), border: Border.all(color: p.line)),
+                    child: Text('Other platform', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: p.inkSubtle)),
+                  ),
+                  const SizedBox(height: 3),
+                  Text('₹$other',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.inkSubtle, decoration: TextDecoration.lineThrough)),
+                ],
+              ),
+              const SizedBox(width: 11),
+              const Icon(Icons.arrow_forward_rounded, size: 18, color: green),
+              const SizedBox(width: 11),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Shifter · $title', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: greenInk)),
+                  Text('₹$our', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: greenInk, height: 1)),
+                ],
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(color: green, borderRadius: BorderRadius.circular(8)),
+                child: Text('SAVE ₹$save', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline_rounded, size: 13, color: p.inkSubtle),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    when.isEmpty
+                        ? "Other platform's live price · same route & vehicle"
+                        : "Other platform's live price · same route & vehicle · checked $when",
+                    style: TextStyle(fontSize: 10.5, color: p.inkSubtle, fontWeight: FontWeight.w500, height: 1.25),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2007,12 +2131,16 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
       else if (_isTwoWheeler(selected))
         _twoWheelerBodyTypeNotice(),
       const SizedBox(height: 18), Text(_currentBookingType == 3 ? 'Next day delivery package' : 'Choose delivery option', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 16)), const SizedBox(height: 4),
-      if (!_loadingModels && _models.length > 1) Text('Turn a model ON to include every model above it. Turn it OFF to switch off every model below it too.', style: TextStyle(color: p.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3)),
+      if (!_loadingModels && _models.length > 1 && _showAllModels) Text('Cheapest is on by default. Turn on a faster option to widen your driver search — you pay the highest option you turn on.', style: TextStyle(color: p.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 12, height: 1.3)),
       if (!_loadingModels && _models.isNotEmpty && _selectedModelIndex == null) Padding(padding: const EdgeInsets.only(top: 6), child: Text('Turn ON at least one delivery option to continue.', style: TextStyle(color: p.danger, fontFamily: 'Gilroy_Medium', fontSize: 12.5))),
       if (_loadingModels) Padding(padding: const EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator(color: p.brand))),
       if (!_loadingModels && _modelsError != null) Text(_modelsError!, style: TextStyle(color: p.danger, fontFamily: 'Gilroy_Medium', fontSize: 12.5)),
-      if (!_loadingModels) ..._models.asMap().entries.map((entry) { final index = entry.key; final model = entry.value; final modelOn = isModelOn(_selectedModelIndex, index); final fare = _modelFare(model)!; return DeliveryModelTile(title: _modelTitle(model), description: _text(model['description']), fare: '₹${fare.toStringAsFixed(0)}', on: modelOn, selected: index == _selectedModelIndex, nextDaySaver: _currentBookingType == 3, onToggle: (value) => _toggleModel(index, value)); }),
-      if (_selectedModel != null) ...[const SizedBox(height: 16), Divider(height: 1, color: p.divider), const SizedBox(height: 12), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Estimated fare', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 14)), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
+      // Collapsed by default: only the chosen tier (or the top one if none chosen yet) shows;
+      // "More delivery options" reveals the rest. Expanding/collapsing never changes which tiers are ON.
+      if (!_loadingModels) ..._models.asMap().entries.where((entry) => _showAllModels || _models.length <= 1 || entry.key == (_selectedModelIndex ?? 0)).map((entry) { final index = entry.key; final model = entry.value; final modelOn = isModelOn(_selectedModelIndex, index); final fare = _modelFare(model)!; return DeliveryModelTile(title: _modelTitle(model), description: _text(model['description']), fare: '₹${fare.toStringAsFixed(0)}', on: modelOn, selected: index == _selectedModelIndex, nextDaySaver: _currentBookingType == 3, onToggle: (value) => _toggleModel(index, value)); }),
+      if (!_loadingModels && _models.length > 1) Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => setState(() => _showAllModels = !_showAllModels), icon: Icon(_showAllModels ? Icons.expand_less_rounded : Icons.expand_more_rounded, size: 18, color: p.brandText), label: Text(_showAllModels ? 'Hide options' : 'More delivery options (${_models.length - 1} more)', style: TextStyle(color: p.brandText, fontFamily: 'Gilroy_Bold', fontSize: 13)), style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap))),
+      if (_selectedModel != null) ...[const SizedBox(height: 16), Divider(height: 1, color: p.divider), const SizedBox(height: 12), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total fare', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 14)), Text('₹${_modelFare(_selectedModel!)!.toStringAsFixed(2)}', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
+        const SizedBox(height: 3), Text('Fixed for this route · all-inclusive, no platform fee or GST', style: TextStyle(color: p.inkSubtle, fontFamily: 'Gilroy_Medium', fontSize: 11.5)),
         if ((_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) || (_useReferralPoints && _referralRedeemablePoints > 0)) ...[
           if (_appliedCoupon != null && _couponDiscountFor(_modelFare(_selectedModel!)!) > 0) ...[
             const SizedBox(height: 4),
@@ -2025,7 +2153,93 @@ class _SelectVehicleScreenState extends State<SelectVehicleScreen> {
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Payable amount', style: TextStyle(color: p.ink, fontFamily: 'Gilroy_Bold', fontSize: 14)), Text('₹${_payableAmount(_modelFare(_selectedModel!)!).toStringAsFixed(2)}', style: TextStyle(color: p.brandText, fontFamily: 'Gilroy_Bold', fontSize: 18))]),
         ], Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _showFareBreakdown(_selectedModel!, _modelFare(_selectedModel!)!), child: Text('View fare details', style: TextStyle(color: p.brandText, fontFamily: 'Gilroy_Bold', fontSize: 13))))],
+      if (_labourEnabled) ...[const SizedBox(height: 14), _buildLabourCard(p)],
     ]));
+  }
+
+  /// Loading/Unloading opt-in card (spec 2026-11-24). Shown only where the city has labour enabled.
+  /// Off → one toggle. Declared → one bold LOCKED total ("Yeh final hai") held separately from the
+  /// transport fare. Over-cap → no price, a "crew labour jald aa raha hai" note; the booking proceeds
+  /// as transport-only (the declaration is dropped at order time).
+  Widget _buildLabourCard(AppPalette p) {
+    final hasDecl = _labourOptedIn && _labourDeclaration != null;
+    return Container(
+      padding: const EdgeInsets.all(AppSpace.m),
+      decoration: BoxDecoration(
+        color: p.brandTint.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: _labourOptedIn ? p.brand : p.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.inventory_2_rounded, color: p.brandText, size: 20),
+              const SizedBox(width: AppSpace.s),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Saaman uthana chahiye?'.tr, style: AppText.bodyStrong(p.ink)),
+                    Text('Driver loading/unloading me madad karega'.tr, style: AppText.caption(p.inkSubtle)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _labourOptedIn,
+                activeColor: p.brand,
+                onChanged: (on) {
+                  if (on) {
+                    _openLabourSheet();
+                  } else {
+                    setState(() { _labourOptedIn = false; _labourDeclaration = null; _labourCharge = null; _labourOverCap = false; });
+                  }
+                },
+              ),
+            ],
+          ),
+          if (hasDecl) ...[
+            const SizedBox(height: AppSpace.s),
+            Divider(height: 1, color: p.divider),
+            const SizedBox(height: AppSpace.s),
+            if (_labourPricing)
+              Row(children: [
+                SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: p.brand)),
+                const SizedBox(width: AppSpace.s),
+                Text('Keemat laga rahe hain...'.tr, style: AppText.caption(p.inkMuted)),
+              ])
+            else if (_labourOverCap)
+              Row(children: [
+                Icon(Icons.groups_2_rounded, color: p.warning, size: 18),
+                const SizedBox(width: AppSpace.s),
+                Expanded(child: Text(
+                  'Itne bade kaam ke liye crew labour jald aa raha hai. Abhi transport book karein — booking me labour charge nahi lagega.'.tr,
+                  style: AppText.caption(p.warning),
+                )),
+              ])
+            else if (_labourCharge != null) ...[
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text('Saaman uthana (final)'.tr, style: AppText.bodyStrong(p.ink)),
+                Text('₹${_labourCharge!.toStringAsFixed(0)}', style: AppText.title(p.brandText).copyWith(fontSize: 20)),
+              ]),
+              const SizedBox(height: 3),
+              Text('Yeh keemat lock hai — driver isse badal nahi sakta. Jagah par saaman alag nikla to driver photo bhej kar aapki manzoori maangega.'.tr,
+                  style: AppText.small(p.inkSubtle)),
+            ],
+            const SizedBox(height: AppSpace.s),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _openLabourSheet,
+                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                child: Text('Badlein'.tr, style: AppText.bodyStrong(p.brandText).copyWith(fontSize: 13)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   /// Goods type, coupon, reward points and GST — moved out of the vehicle section into one Porter-style card.

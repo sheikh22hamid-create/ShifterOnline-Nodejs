@@ -2,6 +2,7 @@
 
 import 'package:flutter_native_contact_picker/flutter_native_contact_picker.dart';
 import 'package:goParcel/utils/phone_number.dart';
+import 'package:goParcel/utils/address_format.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -321,7 +322,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
           : "Location (${_currentLat.toStringAsFixed(4)}, ${_currentLng.toStringAsFixed(4)})";
       // Coordinates are exactly the pin the customer confirmed; only the address text gets the flat no. in front.
       Get.back(result: <String, dynamic>{
-        "address": houseNo.isNotEmpty ? "$houseNo, $base" : base,
+        "address": cleanAddress(houseNo.isNotEmpty ? "$houseNo, $base" : base),
         "lat_map": _currentLat,
         "long_map": _currentLng,
       });
@@ -352,7 +353,7 @@ class _LocationConfirmMapScreenState extends State<LocationConfirmMapScreen> {
     final Map<String, dynamic> addressData = {
       "hno": houseNo,
       "c_ddress": houseNo,
-      "address": finalAddress,
+      "address": cleanAddress(finalAddress),
       "c_name": name,
       "c_number": mobile,
       "lat_map": _currentLat,

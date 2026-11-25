@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../theme/app_tokens.dart';
 import '../../../theme/widgets/pressable_scale.dart';
+import '../../../utils/address_format.dart';
 
 /// Porter-style "Pick up from" card that overlaps the bottom of the Home header.
 /// Presentational only — the tap goes to home.dart's existing pickup-change flow.
@@ -15,7 +16,8 @@ class HomePickupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = AppPalette.current;
-    final shown = (address == null || address!.trim().isEmpty) ? 'Location'.tr : address!;
+    final cleaned = cleanAddress(address);
+    final shown = cleaned.isEmpty ? 'Location'.tr : cleaned;
     return PressableScale(
       onTap: onTap,
       child: Container(

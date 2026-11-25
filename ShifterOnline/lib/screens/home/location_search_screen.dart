@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../Api/Api_wrapper.dart';
 import '../../Api/config.dart';
 import '../../utils/colors.dart';
+import '../../utils/address_format.dart';
 import '../../utils/location_intent_handler.dart';
 import 'location_confirm_map_screen.dart';
 import 'widgets/place_list_tile.dart';
@@ -98,7 +99,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
     if (_isDrop && !widget.locationOnly) _loadSavedPlaces();
 
     if (widget.initialData != null && widget.initialData!['address'] != null) {
-      _searchController.text = widget.initialData!['address'].toString();
+      _searchController.text = cleanAddress(widget.initialData!['address'].toString());
     }
 
     final quick = widget.quickPick;
@@ -646,7 +647,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                widget.pickupData?['address']?.toString() ?? '',
+                                cleanAddress(widget.pickupData?['address']?.toString()),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: AppText.caption(p.inkSubtle),
@@ -932,7 +933,7 @@ class _LocationSearchScreenState extends State<LocationSearchScreen> {
       itemBuilder: (index) {
         final item = _recentSearches[index];
         final name = item['name'] ?? item['address'] ?? '';
-        final address = item['address'] ?? '';
+        final address = cleanAddress((item['address'] ?? '').toString());
         return PlaceListTile(
           title: name,
           subtitle: address,

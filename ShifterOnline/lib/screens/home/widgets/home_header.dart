@@ -14,11 +14,13 @@ class HomeHeader extends StatelessWidget {
   const HomeHeader({
     super.key,
     required this.onNotificationTap,
+    this.onLanguageTap,
     this.walletBalance,
     this.onWalletTap,
   });
 
   final VoidCallback onNotificationTap;
+  final VoidCallback? onLanguageTap;
   final double? walletBalance;
   final VoidCallback? onWalletTap;
 
@@ -75,6 +77,23 @@ class HomeHeader extends StatelessWidget {
                                 style: AppText.bodyStrong(const Color(0xFF15171C)).copyWith(fontSize: 13)),
                           ],
                         ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.s),
+                  ],
+                  if (onLanguageTap != null) ...[
+                    PressableScale(
+                      onTap: onLanguageTap,
+                      semanticLabel: 'Change language'.tr,
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: AppShadow.card,
+                        ),
+                        child: const Icon(Icons.translate_rounded, size: 21, color: Color(0xFF15171C)),
                       ),
                     ),
                     const SizedBox(width: AppSpace.s),

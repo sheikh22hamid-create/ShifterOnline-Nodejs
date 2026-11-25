@@ -18,6 +18,8 @@ import 'package:goParcel/screens/myorder/trackingway.dart';
 import 'package:goParcel/screens/notification/notification.dart';
 import 'package:goParcel/screens/home/home_option_tiles.dart';
 import 'package:goParcel/screens/profile/premium_plans_screen.dart';
+import 'package:goParcel/Language/language_screen.dart';
+import 'package:goParcel/utils/Calculation.dart' show makePhoneCall;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -45,6 +47,7 @@ import 'widgets/feature_intro_sheet.dart';
 import 'package:goParcel/screens/home/wallet_page.dart';
 import 'package:goParcel/services/wallet_balance_service.dart';
 import 'package:goParcel/theme/app_tokens.dart';
+import 'package:goParcel/theme/widgets/pressable_scale.dart';
 import 'package:goParcel/theme/widgets/app_card.dart';
 import 'package:goParcel/theme/widgets/app_skeleton.dart';
 
@@ -2265,6 +2268,72 @@ class _HomeState extends State<Home> {
     _loadWalletBalance();
   }
 
+  bool _openingHomeSupport = false;
+
+  /// Prominent "Need help? Call us" on Home — fetches the real customer-care
+  /// number from the server (same source as the waiting screen, never hard-coded)
+  /// and dials it. Helps non-techy users who want to talk to a person.
+  Future<void> _contactHomeSupport() async {
+    if (_openingHomeSupport) return;
+    setState(() => _openingHomeSupport = true);
+    try {
+      final res = await ApiWrapper.dataPostNode(Config.nodeCustomerCare, {}).timeout(const Duration(seconds: 10));
+      final number = (res is Map ? res['customer_care_number'] : null)?.toString().trim() ?? '';
+      if (number.isEmpty) {
+        ApiWrapper.showToastMessage("Support number is not available right now. Please try again.".tr);
+        return;
+      }
+      await makePhoneCall(number);
+    } catch (_) {
+      ApiWrapper.showToastMessage("Support number is not available right now. Please try again.".tr);
+    } finally {
+      if (mounted) setState(() => _openingHomeSupport = false);
+    }
+  }
+
+  Widget _buildNeedHelpButton() {
+    final p = AppPalette.current;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: PressableScale(
+        onTap: _openingHomeSupport ? null : _contactHomeSupport,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(AppRadius.card),
+            border: Border.all(color: p.line),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(color: p.successTint, shape: BoxShape.circle),
+                child: Icon(Icons.headset_mic_rounded, size: 20, color: p.success),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Need help? Call us'.tr, style: AppText.bodyStrong(p.ink)),
+                    const SizedBox(height: 2),
+                    Text('Talk to our support team'.tr, style: AppText.body(p.inkMuted).copyWith(fontSize: 12)),
+                  ],
+                ),
+              ),
+              _openingHomeSupport
+                  ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: p.brand))
+                  : Icon(Icons.call_rounded, size: 20, color: p.brand),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHomeSkeleton() {
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
@@ -2363,6 +2432,7 @@ class _HomeState extends State<Home> {
                 children: [
                   HomeHeader(
                     onNotificationTap: () => Get.to(Notifications()),
+                    onLanguageTap: () => Get.to(() => const LanguageScreen()),
                     walletBalance: _walletBalance,
                     onWalletTap: _openWalletFromHome,
                   ),
@@ -2393,6 +2463,7 @@ class _HomeState extends State<Home> {
                         scheduleEnabled: _scheduleBookingEnabled,
                       ),
                       const SizedBox(height: 12),
+                      _buildNeedHelpButton(),
                       _buildRewardMilestoneCard(),
                       const FreeRideChanceTile(),
                       const SizedBox(height: 12),

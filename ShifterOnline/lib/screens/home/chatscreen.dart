@@ -19,11 +19,11 @@ import 'package:goParcel/utils/notification_target.dart';
 import 'package:goParcel/utils/colors.dart';
 import 'package:goParcel/utils/customewidget/customwidgets.dart';
 import 'package:googleapis_auth/auth_io.dart';
-import '../../firebase_service_account.dart'; // local only, gitignored - holds the Firebase service account key
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:goParcel/main.dart';
+import '../../firebase_service_account.dart'; // local only, gitignored - holds the Firebase service account key
 
 
 bool isChatScreenOpen = false; // Track chat screen state
