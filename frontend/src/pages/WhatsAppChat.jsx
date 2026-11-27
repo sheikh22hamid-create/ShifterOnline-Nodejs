@@ -20,6 +20,12 @@ import {
   ShieldCheck,
   ExternalLink,
   Radio,
+  Users,
+  CheckSquare,
+  Square,
+  Truck,
+  UserCheck,
+  CheckCircle2,
 } from 'lucide-react'
 import api from '../services/api'
 import { useSocket } from '../context/SocketContext'
@@ -94,6 +100,31 @@ export default function WhatsAppChat() {
   const [showNewChatModal, setShowNewChatModal] = useState(false)
   const [newChatPhone, setNewChatPhone] = useState('')
   const [newChatTemplate, setNewChatTemplate] = useState('')
+
+  // Multi-Send / Broadcast Modal State
+  const [showMultiSendModal, setShowMultiSendModal] = useState(false)
+  const [audienceType, setAudienceType] = useState('customers') // 'customers' | 'drivers'
+  const [driverSubType, setDriverSubType] = useState('all') // 'all' | 'incomplete' | 'complete' | 'trial'
+  const [audienceSearch, setAudienceSearch] = useState('')
+  const [audienceList, setAudienceList] = useState([])
+  const [audienceCounts, setAudienceCounts] = useState({
+    customers: 0,
+    drivers_all: 0,
+    drivers_incomplete: 0,
+    drivers_complete: 0,
+    drivers_trial: 0,
+  })
+  const [loadingAudience, setLoadingAudience] = useState(false)
+  const [selectedRecipients, setSelectedRecipients] = useState(new Set()) // Set of phone strings
+
+  // Multi-send composer state
+  const [multiTemplate, setMultiTemplate] = useState('shifter_customer_welcome')
+  const [multiText, setMultiText] = useState('')
+  const [multiMediaAttachment, setMultiMediaAttachment] = useState(null)
+  const [uploadingMultiMedia, setUploadingMultiMedia] = useState(false)
+  const [multiSending, setMultiSending] = useState(false)
+  const [multiSendProgress, setMultiSendProgress] = useState(null)
+  const multiFileInputRef = useRef(null)
 
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -223,8 +254,8 @@ export default function WhatsAppChat() {
               ? message.media_type?.startsWith('video')
                 ? '🎥 Video'
                 : message.media_type?.startsWith('audio')
-                ? '🎵 Audio'
-                : '📷 Photo'
+                  ? '🎵 Audio'
+                  : '📷 Photo'
               : 'Sent media')
           updated[index] = {
             ...updated[index],
@@ -395,6 +426,136 @@ export default function WhatsAppChat() {
     loadThreads()
   }
 
+  // Multi-Send Audience Fetcher
+  const fetchAudience = useCallback(async () => {
+    try {
+      setLoadingAudience(true)
+      const res = await api.get('/../whatsapp/chat/audience', {
+        params: {
+          type: audienceType,
+          sub_type: driverSubType,
+          search: audienceSearch.trim() || undefined,
+        },
+      })
+      if (res.data?.success && res.data?.data) {
+        setAudienceList(res.data.data)
+        if (res.data.counts) {
+          setAudienceCounts(res.data.counts)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch audience:', err)
+      toast.error('Failed to load contact list')
+    } finally {
+      setLoadingAudience(false)
+    }
+  }, [audienceType, driverSubType, audienceSearch, toast])
+
+  useEffect(() => {
+    if (showMultiSendModal) {
+      fetchAudience()
+    }
+  }, [showMultiSendModal, fetchAudience])
+
+  // Multi-Send Selection Handlers
+  const toggleSelectRecipient = (phone) => {
+    setSelectedRecipients((prev) => {
+      const next = new Set(prev)
+      if (next.has(phone)) next.delete(phone)
+      else next.add(phone)
+      return next
+    })
+  }
+
+  const handleSelectAll = () => {
+    const allPhones = audienceList.map((c) => c.phone)
+    setSelectedRecipients(new Set(allPhones))
+  }
+
+  const handleDeselectAll = () => {
+    setSelectedRecipients(new Set())
+  }
+
+  // Multi-Send Media Upload
+  const handleMultiMediaUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const isVideo = file.type.startsWith('video/')
+    const maxMb = isVideo ? 16 : 10
+    if (file.size > maxMb * 1024 * 1024) {
+      alert(`File too large. Maximum size for ${isVideo ? 'video is 16MB' : 'image is 10MB'}.`)
+      return
+    }
+
+    try {
+      setUploadingMultiMedia(true)
+      const formData = new FormData()
+      formData.append('media', file)
+      const res = await api.post('/../whatsapp/upload-media', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      if (res.data?.success && (res.data.data?.url || res.data.mediaUrl)) {
+        const mediaUrl = res.data.data?.url || res.data.mediaUrl
+        const mediaType = res.data.data?.mediaType || res.data.mediaType || (isVideo ? 'video/mp4' : 'image/jpeg')
+        setMultiMediaAttachment({
+          url: mediaUrl,
+          type: mediaType,
+          name: file.name,
+        })
+        toast.success(`${isVideo ? 'Video' : 'Image'} attached`)
+      }
+    } catch (err) {
+      console.error('Multi-send media upload failed:', err)
+      toast.error(err.response?.data?.message || err.message || 'Failed to upload media')
+    } finally {
+      setUploadingMultiMedia(false)
+      if (multiFileInputRef.current) multiFileInputRef.current.value = ''
+    }
+  }
+
+  // Multi-Send Dispatcher
+  const handleExecuteMultiSend = async () => {
+    if (selectedRecipients.size === 0) {
+      toast.error('Kripya kam se kam ek recipient select karein.')
+      return
+    }
+
+    const chosenRecipients = audienceList
+      .filter((c) => selectedRecipients.has(c.phone))
+      .map((c) => ({
+        phone: c.phone,
+        name: c.name,
+        type: c.type,
+      }))
+
+    setMultiSending(true)
+    setMultiSendProgress({ sent: 0, total: chosenRecipients.length, done: false, errorCount: 0 })
+
+    try {
+      const res = await api.post('/../whatsapp/chat/send-bulk', {
+        recipients: chosenRecipients,
+        isTemplate: Boolean(multiTemplate),
+        templateName: multiTemplate || undefined,
+        text: multiText.trim() || undefined,
+        mediaUrl: multiMediaAttachment?.url || undefined,
+        mediaType: multiMediaAttachment?.type || undefined,
+      })
+
+      if (res.data?.success && res.data?.data) {
+        const { sent, failed, total } = res.data.data
+        setMultiSendProgress({ sent, total, done: true, errorCount: failed })
+        toast.success(`Successfully dispatched to ${sent} contacts!`)
+        loadThreads()
+      }
+    } catch (err) {
+      console.error('Multi-send failed:', err)
+      toast.error(err.response?.data?.message || err.message || 'Failed to dispatch bulk messages')
+    } finally {
+      setMultiSending(false)
+    }
+  }
+
   const isWindowActive = Boolean(activeThread?.is_window_active ?? true)
   const windowRemaining = activeThread?.time_remaining_seconds || 0
 
@@ -402,7 +563,7 @@ export default function WhatsAppChat() {
     messages.length > 0
       ? messages
       : activeThread?.last_message
-      ? [
+        ? [
           {
             id: 'last_msg',
             phone: selectedPhone,
@@ -414,7 +575,7 @@ export default function WhatsAppChat() {
             status: 'delivered',
           },
         ]
-      : []
+        : []
 
   return (
     <div className="flex h-[calc(100vh-80px)] flex-col bg-[var(--bg)] text-[var(--ink)]">
@@ -439,8 +600,18 @@ export default function WhatsAppChat() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowNewChatModal(true)}
+            onClick={() => {
+              setShowMultiSendModal(true)
+              setMultiSendProgress(null)
+            }}
             className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition-opacity hover:opacity-90"
+          >
+            <Users size={15} /> Multi-Send / Broadcast
+          </button>
+          <button
+            onClick={() => setShowNewChatModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[var(--surface-raised)]"
+            style={{ borderColor: 'var(--border)' }}
           >
             <Plus size={15} /> New Chat
           </button>
@@ -477,11 +648,10 @@ export default function WhatsAppChat() {
                 <button
                   key={type}
                   onClick={() => setFilterType(type)}
-                  className={`capitalize px-2.5 py-1 rounded-md text-[11.5px] font-medium transition-colors ${
-                    filterType === type
-                      ? 'bg-emerald-600 text-white'
-                      : 'hover:bg-[var(--surface-raised)]'
-                  }`}
+                  className={`capitalize px-2.5 py-1 rounded-md text-[11.5px] font-medium transition-colors ${filterType === type
+                    ? 'bg-emerald-600 text-white'
+                    : 'hover:bg-[var(--surface-raised)]'
+                    }`}
                   style={filterType !== type ? { color: 'var(--ink-muted)' } : {}}
                 >
                   {type === 'all' ? 'All' : `${type}s`}
@@ -518,11 +688,10 @@ export default function WhatsAppChat() {
                   <div
                     key={thread.phone}
                     onClick={() => setSelectedPhone(thread.phone)}
-                    className={`flex items-start gap-3 p-3.5 cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'bg-emerald-500/10 border-l-4 border-l-emerald-600'
-                        : 'hover:bg-[var(--surface-raised)]'
-                    }`}
+                    className={`flex items-start gap-3 p-3.5 cursor-pointer transition-colors ${isSelected
+                      ? 'bg-emerald-500/10 border-l-4 border-l-emerald-600'
+                      : 'hover:bg-[var(--surface-raised)]'
+                      }`}
                   >
                     {/* Avatar with Session indicator dot */}
                     <div className="relative shrink-0">
@@ -531,9 +700,8 @@ export default function WhatsAppChat() {
                       </div>
                       <span
                         title={active ? '24h session active' : '24h session closed'}
-                        className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white dark:border-slate-800 ${
-                          active ? 'bg-emerald-500' : 'bg-slate-400'
-                        }`}
+                        className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white dark:border-slate-800 ${active ? 'bg-emerald-500' : 'bg-slate-400'
+                          }`}
                       />
                     </div>
 
@@ -689,18 +857,16 @@ export default function WhatsAppChat() {
                         className={`flex flex-col ${isOutbound ? 'items-end' : 'items-start'}`}
                       >
                         <div
-                          className={`max-w-[75%] sm:max-w-[65%] rounded-2xl p-3 shadow-xs text-xs space-y-1.5 ${
-                            isOutbound
-                              ? 'bg-emerald-600 text-white rounded-tr-xs'
-                              : 'surface-card text-[var(--ink)] border rounded-tl-xs'
-                          }`}
+                          className={`max-w-[75%] sm:max-w-[65%] rounded-2xl p-3 shadow-xs text-xs space-y-1.5 ${isOutbound
+                            ? 'bg-emerald-600 text-white rounded-tr-xs'
+                            : 'surface-card text-[var(--ink)] border rounded-tl-xs'
+                            }`}
                           style={!isOutbound ? { borderColor: 'var(--border)' } : {}}
                         >
                           {/* Sender Label */}
                           <div
-                            className={`flex items-center justify-between gap-3 text-[10px] font-semibold ${
-                              isOutbound ? 'text-emerald-100' : 'text-slate-400'
-                            }`}
+                            className={`flex items-center justify-between gap-3 text-[10px] font-semibold ${isOutbound ? 'text-emerald-100' : 'text-slate-400'
+                              }`}
                           >
                             <span>{isOutbound ? msg.admin_name || 'Admin' : msg.sender_name || 'User'}</span>
                             {msg.is_template && (
@@ -741,9 +907,8 @@ export default function WhatsAppChat() {
 
                           {/* Timestamp & Status Checkmarks */}
                           <div
-                            className={`flex items-center justify-end gap-1 text-[10px] pt-0.5 ${
-                              isOutbound ? 'text-emerald-100' : 'text-slate-400'
-                            }`}
+                            className={`flex items-center justify-end gap-1 text-[10px] pt-0.5 ${isOutbound ? 'text-emerald-100' : 'text-slate-400'
+                              }`}
                           >
                             <span>{formatTime(msg.created_at)}</span>
                             {isOutbound && (
@@ -946,11 +1111,10 @@ export default function WhatsAppChat() {
                     setInputText(tpl.message)
                     setShowTemplateModal(false)
                   }}
-                  className={`p-3 rounded-xl border cursor-pointer transition-colors ${
-                    selectedTemplate === tpl.id
-                      ? 'border-emerald-600 bg-emerald-500/10'
-                      : 'hover:bg-[var(--surface-raised)]'
-                  }`}
+                  className={`p-3 rounded-xl border cursor-pointer transition-colors ${selectedTemplate === tpl.id
+                    ? 'border-emerald-600 bg-emerald-500/10'
+                    : 'hover:bg-[var(--surface-raised)]'
+                    }`}
                   style={{ borderColor: 'var(--border)' }}
                 >
                   <div className="flex items-center justify-between">
@@ -977,6 +1141,392 @@ export default function WhatsAppChat() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Send / Broadcast Modal */}
+      {showMultiSendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs">
+          <div className="w-full max-w-5xl rounded-2xl border surface-card shadow-2xl flex flex-col max-h-[92vh] overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b px-5 py-3.5 surface-card" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  <Users size={19} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <span>Multi-Contact Broadcast (मल्टी-मैसेज)</span>
+                    <span className="rounded bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                      One-Click Multi-Send
+                    </span>
+                  </h3>
+                  <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    Send approved templates or updates to Customers or Drivers in bulk with real-time live chat tracking.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMultiSendModal(false)
+                  setMultiSendProgress(null)
+                }}
+                className="rounded-lg p-1 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Audience Category Selector Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-2.5 bg-[var(--surface-raised)]" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAudienceType('customers')
+                    setSelectedRecipients(new Set())
+                    setMultiTemplate('shifter_customer_welcome')
+                    const tpl = templates.find((t) => t.id === 'shifter_customer_welcome')
+                    setMultiText(tpl?.message || '')
+                  }}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    audienceType === 'customers'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'border text-slate-600 dark:text-slate-300 hover:bg-black/5'
+                  }`}
+                  style={audienceType !== 'customers' ? { borderColor: 'var(--border)' } : {}}
+                >
+                  <User size={14} />
+                  <span>Customers ({audienceCounts.customers || 0})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAudienceType('drivers')
+                    setSelectedRecipients(new Set())
+                    setMultiTemplate('shifter_driver_partner_app')
+                    const tpl = templates.find((t) => t.id === 'shifter_driver_partner_app')
+                    setMultiText(tpl?.message || '')
+                  }}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    audienceType === 'drivers'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'border text-slate-600 dark:text-slate-300 hover:bg-black/5'
+                  }`}
+                  style={audienceType !== 'drivers' ? { borderColor: 'var(--border)' } : {}}
+                >
+                  <Truck size={14} />
+                  <span>Drivers ({audienceCounts.drivers_all || 0})</span>
+                </button>
+              </div>
+
+              {/* Driver Sub-Filters */}
+              {audienceType === 'drivers' && (
+                <div className="flex flex-wrap items-center gap-1">
+                  {[
+                    { key: 'all', label: 'All Drivers', count: audienceCounts.drivers_all },
+                    { key: 'incomplete', label: '⚠️ Incomplete Reg.', count: audienceCounts.drivers_incomplete, tpl: 'shifter_driver_incomplete_reg' },
+                    { key: 'complete', label: '✅ Approved', count: audienceCounts.drivers_complete, tpl: 'shifter_driver_partner_app' },
+                    { key: 'trial', label: '⏱️ Trial Drivers', count: audienceCounts.drivers_trial, tpl: 'shifter_driver_partner_app' },
+                  ].map((sub) => (
+                    <button
+                      key={sub.key}
+                      type="button"
+                      onClick={() => {
+                        setDriverSubType(sub.key)
+                        setSelectedRecipients(new Set())
+                        if (sub.tpl) {
+                          setMultiTemplate(sub.tpl)
+                          const found = templates.find((t) => t.id === sub.tpl)
+                          if (found) setMultiText(found.message || '')
+                        }
+                      }}
+                      className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                        driverSubType === sub.key
+                          ? 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 font-bold border border-emerald-500/30'
+                          : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      {sub.label} ({sub.count || 0})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Body - 2 Column Split */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 overflow-hidden">
+              
+              {/* Left Column: Contact Selector (7 cols) */}
+              <div className="lg:col-span-7 flex flex-col border-r overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+                {/* Search & Bulk Select Controls */}
+                <div className="p-3 border-b space-y-2 surface-card" style={{ borderColor: 'var(--border)' }}>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={`Search ${audienceType === 'customers' ? 'customer' : 'driver'} name, phone, city...`}
+                      value={audienceSearch}
+                      onChange={(e) => setAudienceSearch(e.target.value)}
+                      className="w-full rounded-lg border pl-9 pr-3 py-1.5 text-xs outline-none focus:border-emerald-500 bg-[var(--bg)]"
+                      style={{ borderColor: 'var(--border)' }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSelectAll}
+                        disabled={audienceList.length === 0}
+                        className="flex items-center gap-1 rounded bg-black/5 dark:bg-white/5 hover:bg-black/10 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 transition-colors disabled:opacity-40"
+                      >
+                        <CheckSquare size={13} /> Select All ({audienceList.length})
+                      </button>
+                      {selectedRecipients.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleDeselectAll}
+                          className="flex items-center gap-1 rounded bg-black/5 dark:bg-white/5 hover:bg-black/10 px-2 py-1 text-[11px] font-medium text-slate-500 transition-colors"
+                        >
+                          <Square size={13} /> Clear Selection
+                        </button>
+                      )}
+                    </div>
+
+                    <span className="text-[11.5px] font-bold">
+                      Selected: <span className="text-emerald-600 dark:text-emerald-400">{selectedRecipients.size}</span> of {audienceList.length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Contact List */}
+                <div className="flex-1 overflow-y-auto p-2 space-y-1 divide-y divide-black/5 dark:divide-white/5">
+                  {loadingAudience ? (
+                    <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                      <RefreshCw size={24} className="animate-spin mb-2" />
+                      <p className="text-xs">Loading contact roster...</p>
+                    </div>
+                  ) : audienceList.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                      <AlertCircle size={26} className="mb-2 text-slate-300" />
+                      <p className="text-xs font-semibold">No contacts found</p>
+                      <p className="text-[11px]">Try modifying your search or filters.</p>
+                    </div>
+                  ) : (
+                    audienceList.map((contact) => {
+                      const isSelected = selectedRecipients.has(contact.phone)
+                      return (
+                        <div
+                          key={contact.id}
+                          onClick={() => toggleSelectRecipient(contact.phone)}
+                          className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-500/10 border border-emerald-500/30'
+                              : 'hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="h-4 w-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                            />
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                              {contact.name.slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold truncate">{contact.name}</span>
+                                {contact.status === 'incomplete' && (
+                                  <span className="rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 px-1.5 py-0.2 text-[9.5px] font-semibold shrink-0">
+                                    Incomplete
+                                  </span>
+                                )}
+                                {contact.status === 'trial' && (
+                                  <span className="rounded bg-purple-500/15 text-purple-700 dark:text-purple-400 px-1.5 py-0.2 text-[9.5px] font-semibold shrink-0">
+                                    Trial
+                                  </span>
+                                )}
+                                {contact.status === 'complete' && (
+                                  <span className="rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.2 text-[9.5px] font-semibold shrink-0">
+                                    Approved
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] font-mono" style={{ color: 'var(--ink-muted)' }}>
+                                +{contact.phone} {contact.details ? `• ${contact.details}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Composer & Dispatcher (5 cols) */}
+              <div className="lg:col-span-5 flex flex-col surface-card overflow-hidden">
+                <div className="p-4 border-b space-y-3 flex-1 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+                  
+                  {/* Template Selection */}
+                  <div>
+                    <label className="block text-xs font-bold mb-1" style={{ color: 'var(--ink)' }}>
+                      Select Message Template (Approved)
+                    </label>
+                    <select
+                      value={multiTemplate}
+                      onChange={(e) => {
+                        const tplId = e.target.value
+                        setMultiTemplate(tplId)
+                        const found = templates.find((t) => t.id === tplId)
+                        if (found) {
+                          setMultiText(found.message || '')
+                          if (found.media_url) {
+                            setMultiMediaAttachment({
+                              url: found.media_url,
+                              type: found.media_type || 'image',
+                              name: found.media_filename || 'Template Media',
+                            })
+                          } else {
+                            setMultiMediaAttachment(null)
+                          }
+                        }
+                      }}
+                      className="w-full rounded-lg border p-2 text-xs outline-none bg-[var(--bg)]"
+                      style={{ borderColor: 'var(--border)' }}
+                    >
+                      <option value="">Custom Manual Message (24h window only)</option>
+                      {templates.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.title} ({tpl.categoryLabel})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Message Body Editor */}
+                  <div>
+                    <label className="block text-xs font-bold mb-1" style={{ color: 'var(--ink)' }}>
+                      Message Text Preview & Edit
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={multiText}
+                      onChange={(e) => setMultiText(e.target.value)}
+                      placeholder="Type message text here..."
+                      className="w-full rounded-lg border p-2 text-xs outline-none bg-[var(--bg)] font-sans resize-none"
+                      style={{ borderColor: 'var(--border)' }}
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
+                      <span>Meta Cloud API formatting: *bold*, _italic_</span>
+                      <span>{multiText.length} chars</span>
+                    </div>
+                  </div>
+
+                  {/* Media Attachment */}
+                  <div>
+                    <input
+                      type="file"
+                      ref={multiFileInputRef}
+                      accept="image/*,video/*"
+                      onChange={handleMultiMediaUpload}
+                      className="hidden"
+                    />
+
+                    {multiMediaAttachment ? (
+                      <div className="flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 border border-emerald-500/20">
+                        <div className="flex items-center gap-2 truncate">
+                          {multiMediaAttachment.type.startsWith('video') ? <VideoIcon size={16} /> : <ImageIcon size={16} />}
+                          <span className="truncate font-semibold">{multiMediaAttachment.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMultiMediaAttachment(null)}
+                          className="text-slate-400 hover:text-red-500"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => multiFileInputRef.current?.click()}
+                        disabled={uploadingMultiMedia}
+                        className="flex items-center gap-1.5 rounded-lg border border-dashed p-2 text-xs text-slate-500 hover:bg-black/5 dark:hover:bg-white/5 w-full justify-center transition-colors"
+                        style={{ borderColor: 'var(--border)' }}
+                      >
+                        {uploadingMultiMedia ? (
+                          <RefreshCw size={14} className="animate-spin text-emerald-600" />
+                        ) : (
+                          <Paperclip size={14} />
+                        )}
+                        <span>{uploadingMultiMedia ? 'Uploading media...' : 'Attach Image or Video (Optional)'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Progress & Result Box if dispatching or done */}
+                  {multiSendProgress && (
+                    <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                      multiSendProgress.done
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-sky-500/10 border-sky-500/30 text-sky-800 dark:text-sky-300'
+                    }`}>
+                      <div className="flex items-center justify-between font-bold">
+                        <span>{multiSendProgress.done ? '✅ Broadcast Finished!' : '🚀 Sending Messages...'}</span>
+                        <span>{multiSendProgress.sent} / {multiSendProgress.total}</span>
+                      </div>
+                      <div className="w-full bg-black/10 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-emerald-600 h-2 transition-all duration-300"
+                          style={{
+                            width: `${Math.round((multiSendProgress.sent / (multiSendProgress.total || 1)) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      {multiSendProgress.done && (
+                        <p className="text-[11px] font-medium pt-1">
+                          Successfully delivered to {multiSendProgress.sent} contacts. {multiSendProgress.errorCount > 0 ? `(${multiSendProgress.errorCount} failed)` : ''} Messages are now visible in your live inbox.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Action Button */}
+                <div className="p-4 border-t surface-card space-y-2" style={{ borderColor: 'var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={handleExecuteMultiSend}
+                    disabled={selectedRecipients.size === 0 || multiSending}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-md hover:bg-emerald-700 transition-colors disabled:opacity-40"
+                  >
+                    {multiSending ? (
+                      <>
+                        <RefreshCw size={15} className="animate-spin" />
+                        <span>Dispatching to {selectedRecipients.size} Contacts...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={15} />
+                        <span>Send to {selectedRecipients.size} Selected {audienceType === 'customers' ? 'Customers' : 'Drivers'}</span>
+                      </>
+                    )}
+                  </button>
+
+                  <p className="text-[10px] text-center text-slate-400">
+                    Paced delivery ensures Meta WhatsApp Business compliance without rate limiting.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

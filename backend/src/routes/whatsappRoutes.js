@@ -10,6 +10,7 @@ const trialDriverCloudFlow = require("../whatsapp/trialDriverCloudFlow");
 const { WHATSAPP_TEMPLATES } = require("../whatsapp/templates");
 const templateService = require("../services/whatsappTemplateService");
 const chatService = require("../services/whatsappChatService");
+const prisma = require("../config/db");
 const { uploadBuffer, urlForRelativePath } = require("../utils/cloudinaryStorage");
 const auth = require("../middleware/auth");
 const authorize = require("../middleware/authorize");
@@ -615,6 +616,319 @@ router.post("/chat/send", auth, authorize("superadmin", "admin", "executive"), a
   } catch (err) {
     logger.error("POST /chat/send failed:", err);
     return res.status(400).json({ success: false, message: err.message || "Failed to send message" });
+  }
+});
+
+/**
+ * GET /api/v1/whatsapp/chat/audience
+ * Returns categorized audience lists (Customers, All Drivers, Incomplete, Complete, Trial)
+ * with counts, city filter scoping, and search capability for multi-send.
+ */
+router.get("/chat/audience", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const type = req.query.type || "all"; // "customers" | "drivers" | "all"
+    const subType = req.query.sub_type || "all"; // for drivers: "all" | "incomplete" | "complete" | "trial"
+    const search = (req.query.search || "").trim().toLowerCase();
+
+    const isSuperAdmin = req.user && req.user.role === "superadmin";
+    const cityId = !isSuperAdmin && req.user?.city_id ? parseInt(req.user.city_id, 10) : null;
+
+    let customers = [];
+    let drivers = [];
+
+    // 1. Fetch Customers if needed
+    if (type === "all" || type === "customers") {
+      const userWhere = {};
+      if (cityId) userWhere.city_id = cityId;
+
+      const userRows = await prisma.tbl_user.findMany({
+        where: userWhere,
+        select: {
+          id: true,
+          name: true,
+          mobile: true,
+          city_id: true,
+          status: true,
+        },
+        orderBy: { id: "desc" },
+        take: 500,
+      });
+
+      customers = userRows
+        .map((u) => {
+          let phone = String(u.mobile || "").replace(/\D/g, "");
+          if (phone.length === 10) phone = `91${phone}`;
+          return {
+            id: `cust_${u.id}`,
+            original_id: u.id,
+            name: u.name || "Customer",
+            phone,
+            city_id: u.city_id,
+            city_name: "",
+            type: "customer",
+            status: "customer",
+            status_label: "Customer",
+            details: `Customer #${u.id}`,
+          };
+        })
+        .filter((u) => u.phone && u.phone.length >= 10);
+    }
+
+    // 2. Fetch Drivers if needed
+    if (type === "all" || type === "drivers") {
+      const riderWhere = {};
+      if (cityId) riderWhere.city_id = cityId;
+
+      const [riderRows, leadRows, cities] = await Promise.all([
+        prisma.tbl_rider.findMany({
+          where: riderWhere,
+          select: {
+            id: true,
+            full_name: true,
+            first_name: true,
+            last_name: true,
+            fmobile: true,
+            city_id: true,
+            vehicle: true,
+            vehicle_no: true,
+            status: true,
+            a_status: true,
+            verification_status: true,
+            trial_status: true,
+          },
+          orderBy: { id: "desc" },
+          take: 600,
+        }),
+        // Also fetch incomplete registration leads
+        subType === "all" || subType === "incomplete"
+          ? prisma.tbl_registration_lead.findMany({
+              where: { status: { in: ["pending", "contacted"] } },
+              orderBy: { id: "desc" },
+              take: 300,
+            })
+          : Promise.resolve([]),
+        prisma.tbl_city.findMany({ select: { id: true, title: true } }),
+      ]);
+
+      const cityNameMap = Object.fromEntries(cities.map((c) => [c.id, c.title]));
+
+      // Attach city names to customers
+      for (const cust of customers) {
+        if (cust.city_id && cityNameMap[cust.city_id]) {
+          cust.city_name = cityNameMap[cust.city_id];
+          cust.details = `${cityNameMap[cust.city_id]} • Customer #${cust.original_id}`;
+        }
+      }
+
+      const seenPhones = new Set();
+
+      for (const r of riderRows) {
+        let phone = String(r.fmobile || "").replace(/\D/g, "");
+        if (phone.length === 10) phone = `91${phone}`;
+        if (!phone || phone.length < 10) continue;
+        seenPhones.add(phone);
+
+        const isTrial = r.trial_status && r.trial_status !== "none";
+        const isComplete = r.a_status === 1 && r.verification_status === "approved";
+        const isIncomplete = !isComplete && !isTrial;
+
+        let statusCategory = "complete";
+        let statusLabel = "Approved Driver";
+        if (isTrial) {
+          statusCategory = "trial";
+          statusLabel = `Trial (${r.trial_status})`;
+        } else if (isIncomplete) {
+          statusCategory = "incomplete";
+          statusLabel = "Incomplete Registration";
+        }
+
+        const name = r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || `Driver #${r.id}`;
+        const cityName = cityNameMap[r.city_id] || "";
+        const details = [cityName, r.vehicle, r.vehicle_no].filter(Boolean).join(" • ");
+
+        drivers.push({
+          id: `driver_${r.id}`,
+          original_id: r.id,
+          name,
+          phone,
+          city_id: r.city_id,
+          city_name: cityName,
+          type: "driver",
+          status: statusCategory, // "incomplete" | "complete" | "trial"
+          status_label: statusLabel,
+          details,
+        });
+      }
+
+      // Append leads if not already registered
+      for (const lead of leadRows) {
+        let phone = String(lead.phone || "").replace(/\D/g, "");
+        if (phone.length === 10) phone = `91${phone}`;
+        if (!phone || phone.length < 10 || seenPhones.has(phone)) continue;
+        seenPhones.add(phone);
+
+        drivers.push({
+          id: `lead_${lead.id}`,
+          original_id: lead.id,
+          name: "Driver Lead (Incomplete)",
+          phone,
+          city_id: null,
+          city_name: "",
+          type: "driver",
+          status: "incomplete",
+          status_label: "Incomplete Lead",
+          details: `OTP Verified Lead #${lead.id}`,
+        });
+      }
+    }
+
+    // Counts across categories
+    const counts = {
+      customers: customers.length,
+      drivers_all: drivers.length,
+      drivers_incomplete: drivers.filter((d) => d.status === "incomplete").length,
+      drivers_complete: drivers.filter((d) => d.status === "complete").length,
+      drivers_trial: drivers.filter((d) => d.status === "trial").length,
+    };
+
+    // Filter by type & subType
+    let resultList = [];
+    if (type === "customers") {
+      resultList = customers;
+    } else if (type === "drivers") {
+      if (subType === "all") {
+        resultList = drivers;
+      } else {
+        resultList = drivers.filter((d) => d.status === subType);
+      }
+    } else {
+      resultList = [...customers, ...drivers];
+    }
+
+    // Filter by search query if provided
+    if (search) {
+      resultList = resultList.filter(
+        (item) =>
+          item.name.toLowerCase().includes(search) ||
+          item.phone.includes(search) ||
+          (item.city_name && item.city_name.toLowerCase().includes(search)) ||
+          (item.details && item.details.toLowerCase().includes(search))
+      );
+    }
+
+    return res.json({
+      success: true,
+      Result: true,
+      counts,
+      total: resultList.length,
+      data: resultList,
+    });
+  } catch (err) {
+    logger.error("GET /chat/audience failed:", err);
+    return res.status(500).json({ success: false, message: err.message || "Failed to fetch audience" });
+  }
+});
+
+/**
+ * POST /api/v1/whatsapp/chat/send-bulk
+ * Sends message/template to multiple selected recipients in one click with pacing.
+ */
+router.post("/chat/send-bulk", auth, authorize("superadmin", "admin", "executive"), async (req, res) => {
+  try {
+    const {
+      recipients,
+      text,
+      mediaUrl,
+      mediaType,
+      isTemplate,
+      templateName,
+      templateLanguage = "en_US",
+      components = [],
+    } = req.body;
+
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ success: false, message: "recipients must be a non-empty array" });
+    }
+
+    if (!text && !mediaUrl && !templateName) {
+      return res.status(400).json({ success: false, message: "Message text, media attachment, or template is required" });
+    }
+
+    // Deduplicate recipients by phone
+    const cleanRecipients = [];
+    const seen = new Set();
+    for (const r of recipients) {
+      const rawPhone = typeof r === "string" ? r : r?.phone;
+      if (!rawPhone) continue;
+      let digits = String(rawPhone).replace(/\D/g, "");
+      if (digits.length === 10) digits = `91${digits}`;
+      if (digits.length >= 10 && !seen.has(digits)) {
+        seen.add(digits);
+        cleanRecipients.push({
+          phone: digits,
+          name: typeof r === "object" ? r.name : null,
+          type: typeof r === "object" ? r.type : null,
+        });
+      }
+    }
+
+    if (cleanRecipients.length === 0) {
+      return res.status(400).json({ success: false, message: "No valid recipients found" });
+    }
+
+    if (cleanRecipients.length > 250) {
+      return res.status(400).json({ success: false, message: "Maximum 250 recipients allowed per multi-send batch" });
+    }
+
+    logger.info(
+      `[AUDIT] WhatsApp multi-send started by ${req.user.username || req.user.name} (${req.user.id}). Recipients: ${cleanRecipients.length}. Template: ${templateName || "none"}`
+    );
+
+    const results = [];
+    let sentCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < cleanRecipients.length; i++) {
+      const rec = cleanRecipients[i];
+      try {
+        const msg = await chatService.sendAdminMessage({
+          phone: rec.phone,
+          text,
+          mediaUrl,
+          mediaType,
+          isTemplate: Boolean(isTemplate),
+          templateName,
+          templateLanguage,
+          components,
+          adminUser: req.user,
+        });
+
+        sentCount++;
+        results.push({ phone: rec.phone, name: rec.name, status: "sent", message_id: msg?.message_id || msg?.id });
+      } catch (sendErr) {
+        failedCount++;
+        results.push({ phone: rec.phone, name: rec.name, status: "failed", error: sendErr.message || "Delivery failed" });
+      }
+
+      // Small pacing delay (100ms) between calls to avoid socket and Meta API flood
+      if (i < cleanRecipients.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    return res.json({
+      success: true,
+      Result: true,
+      data: {
+        total: cleanRecipients.length,
+        sent: sentCount,
+        failed: failedCount,
+        results,
+      },
+    });
+  } catch (err) {
+    logger.error("POST /chat/send-bulk failed:", err);
+    return res.status(500).json({ success: false, message: err.message || "Failed to execute multi-send" });
   }
 });
 

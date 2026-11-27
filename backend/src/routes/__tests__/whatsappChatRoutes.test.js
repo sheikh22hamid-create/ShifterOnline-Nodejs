@@ -6,6 +6,64 @@ const http = require("http");
 jest.mock("../../whatsapp/client", () => ({
   getBotStatus: jest.fn().mockReturnValue({ status: "connected", connectedPhone: "919999999999" }),
 }));
+jest.mock("../../config/db", () => ({
+  tbl_user: {
+    findMany: jest.fn().mockResolvedValue([
+      { id: 1, name: "Customer One", mobile: 9876543210, city_id: 1, status: 1 },
+    ]),
+  },
+  tbl_rider: {
+    findMany: jest.fn().mockResolvedValue([
+      {
+        id: 1,
+        full_name: "Driver One",
+        fmobile: "9123456789",
+        city_id: 1,
+        status: 1,
+        a_status: 1,
+        verification_status: "approved",
+        trial_status: "none",
+        vehicle: "Tata Ace",
+        vehicle_no: "MP09AB1234",
+      },
+      {
+        id: 2,
+        full_name: "Driver Incomplete",
+        fmobile: "9123456780",
+        city_id: 1,
+        status: 1,
+        a_status: 0,
+        verification_status: "pending",
+        trial_status: "none",
+        vehicle: "Pickup",
+        vehicle_no: null,
+      },
+      {
+        id: 3,
+        full_name: "Driver Trial",
+        fmobile: "9123456781",
+        city_id: 1,
+        status: 1,
+        a_status: 1,
+        verification_status: "approved",
+        trial_status: "active",
+        vehicle: "3 Wheeler",
+        vehicle_no: "MP09CD5678",
+      },
+    ]),
+  },
+  tbl_registration_lead: {
+    findMany: jest.fn().mockResolvedValue([
+      { id: 10, phone: "9811111111", status: "pending" },
+    ]),
+  },
+  tbl_city: {
+    findMany: jest.fn().mockResolvedValue([
+      { id: 1, title: "Indore" },
+      { id: 2, title: "Ujjain" },
+    ]),
+  },
+}));
 jest.mock("../../services/whatsappTemplateService", () => ({
   getAllTemplates: jest.fn().mockResolvedValue([]),
   saveTemplate: jest.fn(),
@@ -112,5 +170,43 @@ describe("WhatsApp Chat & Webhook Routes", () => {
 
     expect(res.status).toBe(200);
     expect(text).toBe("EVENT_RECEIVED");
+  });
+
+  it("GET /api/v1/whatsapp/chat/audience returns categorized audience lists", async () => {
+    const res = await fetch(`http://localhost:${port}/api/v1/whatsapp/chat/audience?type=drivers`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.counts.drivers_all).toBeGreaterThan(0);
+    expect(body.counts.drivers_incomplete).toBeGreaterThan(0);
+    expect(body.counts.drivers_complete).toBeGreaterThan(0);
+    expect(body.counts.drivers_trial).toBeGreaterThan(0);
+  });
+
+  it("POST /api/v1/whatsapp/chat/send-bulk sends message to multiple recipients", async () => {
+    const res = await fetch(`http://localhost:${port}/api/v1/whatsapp/chat/send-bulk`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        recipients: [
+          { phone: "919876543210", name: "User 1" },
+          { phone: "919876543211", name: "User 2" },
+        ],
+        text: "Bulk announcement test",
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data.total).toBe(2);
+    expect(body.data.sent).toBe(2);
+    expect(body.data.failed).toBe(0);
   });
 });
