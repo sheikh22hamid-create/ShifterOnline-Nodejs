@@ -235,7 +235,19 @@ async function recordInboundMessage({
   }
 
   // 2. Upsert thread safely
-  const previewText = body || (messageType ? `[${messageType.toUpperCase()}]` : "[Media]");
+  const previewText =
+    body ||
+    (mediaUrl
+      ? messageType === "video"
+        ? "🎥 Video"
+        : messageType === "audio"
+        ? "🎵 Audio"
+        : messageType === "document"
+        ? "📄 Document"
+        : "📷 Photo"
+      : messageType
+      ? `[${messageType.toUpperCase()}]`
+      : "[Media]");
   try {
     const threadCheck = await prisma.$queryRawUnsafe(
       "SELECT phone FROM whatsapp_chat_threads WHERE phone = ? LIMIT 1",
@@ -349,9 +361,35 @@ async function processWebhookPayload(payload) {
         body = msg.button?.text || "[Button Click]";
       } else if (["image", "video", "document", "audio"].includes(msg.type)) {
         messageType = msg.type;
-        body = msg[msg.type]?.caption || `[${msg.type.toUpperCase()}]`;
-        mediaType = msg[msg.type]?.mime_type || null;
-        // Meta provides media id; mediaUrl can be fetched if required
+        const mediaObj = msg[msg.type];
+        const mediaId = mediaObj?.id;
+        const rawMime = mediaObj?.mime_type || null;
+        const caption = mediaObj?.caption || null;
+
+        if (mediaId && typeof cloudApi.fetchAndStoreMedia === "function") {
+          try {
+            const stored = await cloudApi.fetchAndStoreMedia({
+              mediaId,
+              mimeType: rawMime,
+              messageType,
+            });
+            if (stored?.url) {
+              mediaUrl = stored.url;
+              mediaType = stored.mimeType || rawMime;
+            }
+          } catch (mediaErr) {
+            logger.error(`Failed to download & store WhatsApp media (${mediaId}):`, mediaErr.message || mediaErr);
+          }
+        }
+
+        // If media was fetched, body is only the caption (null if no caption, preventing raw [IMAGE] text)
+        // If media fetch failed, fallback body to caption || `[${msg.type.toUpperCase()}]`
+        if (mediaUrl) {
+          body = caption || null;
+        } else {
+          body = caption || `[${msg.type.toUpperCase()}]`;
+        }
+        mediaType = mediaType || rawMime;
       } else if (msg.type === "location") {
         messageType = "location";
         body = `📍 Location: ${msg.location?.latitude}, ${msg.location?.longitude}`;

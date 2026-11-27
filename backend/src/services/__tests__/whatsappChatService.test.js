@@ -13,6 +13,11 @@ jest.mock("../../whatsapp/cloudApiClient", () => ({
   sendTextMessage: jest.fn().mockResolvedValue({ messages: [{ id: "wamid.out123" }] }),
   sendMediaMessage: jest.fn().mockResolvedValue({ messages: [{ id: "wamid.media123" }] }),
   sendTemplateMessage: jest.fn().mockResolvedValue({ messages: [{ id: "wamid.tpl123" }] }),
+  fetchAndStoreMedia: jest.fn().mockResolvedValue({
+    url: "https://res.cloudinary.com/test/image/upload/v1/whatsapp_inbound/test.jpg",
+    mimeType: "image/jpeg",
+    relativePath: "images/whatsapp_inbound/test.jpg",
+  }),
 }));
 
 describe("whatsappChatService", () => {
@@ -137,6 +142,118 @@ describe("whatsappChatService", () => {
         null,
         null,
         expect.any(Date)
+      );
+    });
+
+    it("handles incoming image message and downloads & stores media", async () => {
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([]) // deduplication check: no duplicate
+        .mockResolvedValueOnce([{ id: 100 }]) // inserted row id
+        .mockResolvedValueOnce([]); // thread check: no thread
+
+      const payload = {
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  contacts: [{ profile: { name: "Md Akram" } }],
+                  messages: [
+                    {
+                      from: "919550769387",
+                      id: "wamid.HBgImg001",
+                      timestamp: "1711112222",
+                      type: "image",
+                      image: {
+                        id: "meta_media_12345",
+                        mime_type: "image/jpeg",
+                        caption: "Bhai location photo dekh lo",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      await chatService.processWebhookPayload(payload);
+
+      expect(cloudApi.fetchAndStoreMedia).toHaveBeenCalledWith({
+        mediaId: "meta_media_12345",
+        mimeType: "image/jpeg",
+        messageType: "image",
+      });
+
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO whatsapp_chat_messages"),
+        "wamid.HBgImg001",
+        "919550769387",
+        expect.any(String),
+        "image",
+        "Bhai location photo dekh lo",
+        "https://res.cloudinary.com/test/image/upload/v1/whatsapp_inbound/test.jpg",
+        "image/jpeg",
+        expect.any(Date)
+      );
+    });
+
+    it("handles incoming image with no caption and sets preview to 📷 Photo", async () => {
+      prisma.$queryRawUnsafe
+        .mockResolvedValueOnce([]) // deduplication
+        .mockResolvedValueOnce([{ id: 101 }]) // inserted row id
+        .mockResolvedValueOnce([]); // thread check
+
+      const payload = {
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  contacts: [{ profile: { name: "Md Akram" } }],
+                  messages: [
+                    {
+                      from: "919550769387",
+                      id: "wamid.HBgImg002",
+                      timestamp: "1711113333",
+                      type: "image",
+                      image: {
+                        id: "meta_media_67890",
+                        mime_type: "image/png",
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      };
+
+      await chatService.processWebhookPayload(payload);
+
+      // Body should be null (not [IMAGE]) because media_url was fetched successfully
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO whatsapp_chat_messages"),
+        "wamid.HBgImg002",
+        "919550769387",
+        expect.any(String),
+        "image",
+        null,
+        "https://res.cloudinary.com/test/image/upload/v1/whatsapp_inbound/test.jpg",
+        "image/jpeg",
+        expect.any(Date)
+      );
+
+      // Thread should have preview 📷 Photo
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO whatsapp_chat_threads"),
+        "919550769387",
+        expect.any(String),
+        expect.any(String),
+        null,
+        "📷 Photo"
       );
     });
   });

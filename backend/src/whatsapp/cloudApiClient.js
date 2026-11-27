@@ -1,4 +1,5 @@
 const logger = require("../utils/logger");
+const { uploadBuffer, urlForRelativePath } = require("../utils/cloudinaryStorage");
 
 const GRAPH_API_VERSION = process.env.WHATSAPP_GRAPH_API_VERSION || "v21.0";
 const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -181,6 +182,129 @@ async function sendMediaMessage(to, mediaType = "image", mediaUrl, caption = nul
   return await callMessagesEndpoint(payload);
 }
 
+/**
+ * Maps mime type to appropriate file extension.
+ */
+function getExtensionFromMime(mimeType, defaultType = "image") {
+  if (!mimeType) return defaultType === "video" ? ".mp4" : defaultType === "audio" ? ".ogg" : ".jpg";
+  const cleanMime = mimeType.split(";")[0].trim().toLowerCase();
+  const map = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "video/mp4": ".mp4",
+    "video/3gpp": ".3gp",
+    "video/quicktime": ".mov",
+    "video/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mpeg": ".mp3",
+    "audio/aac": ".aac",
+    "audio/amr": ".amr",
+    "application/pdf": ".pdf",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  };
+  return map[cleanMime] || (defaultType === "video" ? ".mp4" : defaultType === "audio" ? ".ogg" : ".jpg");
+}
+
+/**
+ * Retrieves the temporary media download URL and metadata from Meta Graph API.
+ * @param {string} mediaId - Meta media ID
+ */
+async function getMediaUrl(mediaId) {
+  const { accessToken } = getCredentials();
+  if (!accessToken) throw new Error("WhatsApp Cloud API access token missing");
+
+  const url = `${GRAPH_BASE_URL}/${mediaId}`;
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = await response.json();
+  if (!response.ok || data.error) {
+    logger.error("Meta media URL retrieval error:", JSON.stringify(data.error || data));
+    const err = new Error(data.error?.message || "Failed to retrieve media URL from Meta");
+    err.details = data.error;
+    throw err;
+  }
+
+  return data; // { url, mime_type, sha256, file_size, id }
+}
+
+/**
+ * Downloads the binary data of a media file from Meta CDN (lookaside.fbsbx.com).
+ * @param {string} mediaId - Meta media ID
+ */
+async function downloadMediaBuffer(mediaId) {
+  const { accessToken } = getCredentials();
+  const mediaInfo = await getMediaUrl(mediaId);
+  if (!mediaInfo.url) {
+    throw new Error(`No download URL returned by Meta for media ID: ${mediaId}`);
+  }
+
+  const downloadRes = await fetch(mediaInfo.url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "User-Agent": "ShifterOnline-Nodejs/1.0",
+    },
+  });
+
+  if (!downloadRes.ok) {
+    throw new Error(`Failed to download media binary from Meta CDN: HTTP ${downloadRes.status}`);
+  }
+
+  const arrayBuf = await downloadRes.arrayBuffer();
+  const buffer = Buffer.from(arrayBuf);
+  return {
+    buffer,
+    mimeType: mediaInfo.mime_type,
+    fileSize: mediaInfo.file_size,
+    id: mediaInfo.id,
+  };
+}
+
+/**
+ * Fetches media from Meta, stores it durably via Cloudinary (or local fallback),
+ * and returns the public delivery URL.
+ * @param {{ mediaId: string, mimeType?: string, messageType?: string }} options
+ */
+async function fetchAndStoreMedia({ mediaId, mimeType = null, messageType = "image" }) {
+  if (!mediaId) throw new Error("mediaId is required to fetch media");
+
+  const downloaded = await downloadMediaBuffer(mediaId);
+  const finalMime = downloaded.mimeType || mimeType;
+  const ext = getExtensionFromMime(finalMime, messageType);
+
+  const isVideo = messageType === "video" || (finalMime && finalMime.startsWith("video/"));
+  const isAudio = messageType === "audio" || (finalMime && finalMime.startsWith("audio/"));
+  const subfolder = isVideo
+    ? "videos/whatsapp_inbound"
+    : isAudio
+    ? "audio/whatsapp_inbound"
+    : "images/whatsapp_inbound";
+
+  const filename = `${Date.now()}_${mediaId}${ext}`;
+  const relativePath = `${subfolder}/${filename}`;
+
+  await uploadBuffer(downloaded.buffer, relativePath);
+
+  let deliveryUrl = urlForRelativePath(relativePath);
+  if (!deliveryUrl) {
+    const base = process.env.PUBLIC_BASE_URL || "https://dev-api.shifteronline.com";
+    deliveryUrl = `${base.replace(/\/$/, "")}/${relativePath.replace(/^\//, "")}`;
+  }
+
+  return {
+    url: deliveryUrl,
+    mimeType: finalMime,
+    relativePath,
+  };
+}
+
 module.exports = {
   getCredentials,
   normalizeRecipient,
@@ -188,4 +312,7 @@ module.exports = {
   sendInteractiveButtons,
   sendTemplateMessage,
   sendMediaMessage,
+  getMediaUrl,
+  downloadMediaBuffer,
+  fetchAndStoreMedia,
 };

@@ -25,6 +25,16 @@ import api from '../services/api'
 import { useSocket } from '../context/SocketContext'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { resolveImageUrl } from '../utils/imageUrl'
+
+function formatThreadPreview(text) {
+  if (!text) return 'No messages yet'
+  if (text === '[IMAGE]') return '📷 Photo'
+  if (text === '[VIDEO]') return '🎥 Video'
+  if (text === '[AUDIO]') return '🎵 Audio'
+  if (text === '[DOCUMENT]') return '📄 Document'
+  return text
+}
 
 function formatTime(isoString) {
   if (!isoString) return ''
@@ -207,9 +217,18 @@ export default function WhatsAppChat() {
         const index = prev.findIndex((t) => t.phone === phone)
         if (index > -1) {
           const updated = [...prev]
+          const preview =
+            message.body ||
+            (message.media_url
+              ? message.media_type?.startsWith('video')
+                ? '🎥 Video'
+                : message.media_type?.startsWith('audio')
+                ? '🎵 Audio'
+                : '📷 Photo'
+              : 'Sent media')
           updated[index] = {
             ...updated[index],
-            last_message: message.body,
+            last_message: preview,
             last_message_at: message.created_at,
           }
           return updated
@@ -546,7 +565,7 @@ export default function WhatsAppChat() {
 
                       <div className="flex items-center justify-between mt-1">
                         <p className="text-[11.5px] truncate max-w-[190px]" style={{ color: 'var(--ink-muted)' }}>
-                          {thread.last_message || 'No messages yet'}
+                          {formatThreadPreview(thread.last_message)}
                         </p>
                         {thread.unread_count > 0 && (
                           <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white">
@@ -693,23 +712,29 @@ export default function WhatsAppChat() {
 
                           {/* Media if present */}
                           {msg.media_url && (
-                            <div className="rounded-lg overflow-hidden border border-black/10 mt-1">
+                            <div className="rounded-lg overflow-hidden border border-black/10 mt-1 max-w-sm">
                               {msg.media_type?.startsWith('video') ? (
-                                <video src={msg.media_url} controls className="max-h-56 w-full rounded" />
+                                <video
+                                  src={resolveImageUrl(msg.media_url)}
+                                  controls
+                                  preload="metadata"
+                                  className="max-h-64 w-full rounded bg-black"
+                                />
                               ) : (
                                 <img
-                                  src={msg.media_url}
+                                  src={resolveImageUrl(msg.media_url)}
                                   alt="attachment"
-                                  className="max-h-64 w-full object-cover rounded cursor-pointer"
-                                  onClick={() => window.open(msg.media_url, '_blank')}
+                                  loading="lazy"
+                                  className="max-h-72 w-full object-cover rounded cursor-pointer hover:opacity-95 transition-opacity"
+                                  onClick={() => window.open(resolveImageUrl(msg.media_url), '_blank')}
                                 />
                               )}
                             </div>
                           )}
 
-                          {/* Body Text */}
-                          {msg.body && (
-                            <p className="whitespace-pre-wrap leading-relaxed text-[12.5px]">
+                          {/* Body Text (hidden if it is just [IMAGE] placeholder when media is present) */}
+                          {msg.body && (!msg.media_url || !['[IMAGE]', '[VIDEO]', '[AUDIO]', '[DOCUMENT]'].includes(msg.body)) && (
+                            <p className="whitespace-pre-wrap leading-relaxed text-[12.5px] mt-1">
                               {msg.body}
                             </p>
                           )}
